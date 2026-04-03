@@ -9,7 +9,16 @@ public record AccountOverview(
     IReadOnlyList<TronTransactionDetail> RecentTransactions);
 
 // Low-level DTOs (used by ITronProvider)
-public record AccountInfo(string Address, long Balance, long NetUsage, long EnergyUsage, long CreateTime);
+
+/// <summary>
+/// Account information returned by the /wallet/getaccount endpoint.
+/// FrozenBalanceForBandwidth and FrozenBalanceForEnergy contain the total staked
+/// amounts (in SUN) from the Stake 2.0 frozenV2 array.
+/// </summary>
+public record AccountInfo(
+    string Address, long Balance, long NetUsage, long EnergyUsage, long CreateTime,
+    long FrozenBalanceForBandwidth = 0,
+    long FrozenBalanceForEnergy = 0);
 public record BlockInfo(
     long BlockNumber, string BlockId, long Timestamp, int TransactionCount, byte[] BlockHeaderRawData,
     IReadOnlyList<BlockTransactionInfo>? Transactions = null);

@@ -60,6 +60,57 @@ public class TronHttpProviderTests
         Assert.Equal(0, result.Balance);
         Assert.Equal(0, result.NetUsage);
         Assert.Equal(0, result.EnergyUsage);
+        Assert.Equal(0, result.FrozenBalanceForBandwidth);
+        Assert.Equal(0, result.FrozenBalanceForEnergy);
+    }
+
+    [Fact]
+    public async Task GetAccountAsync_ParsesFrozenV2_StakingAmounts()
+    {
+        var responseJson = """
+        {
+            "address": "41a1b2c3d4e5f60000000000000000000000000001",
+            "balance": 5000000,
+            "frozenV2": [
+                { "amount": 10000000 },
+                { "type": "ENERGY", "amount": 25000000 },
+                { "type": "ENERGY", "amount": 5000000 }
+            ],
+            "create_time": 1609459200000
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetAccountAsync("41a1b2c3d4e5f60000000000000000000000000001");
+
+        Assert.Equal(5000000, result.Balance);
+        Assert.Equal(10000000, result.FrozenBalanceForBandwidth);  // no type = BANDWIDTH
+        Assert.Equal(30000000, result.FrozenBalanceForEnergy);     // 25M + 5M
+    }
+
+    [Fact]
+    public async Task GetAccountAsync_FrozenV2WithZeroAmount_IsIgnored()
+    {
+        var responseJson = """
+        {
+            "address": "41a1b2c3d4e5f60000000000000000000000000001",
+            "balance": 1000000,
+            "frozenV2": [
+                { "type": "BANDWIDTH" },
+                { "type": "ENERGY", "amount": 0 }
+            ]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetAccountAsync("41a1b2c3d4e5f60000000000000000000000000001");
+
+        Assert.Equal(0, result.FrozenBalanceForBandwidth);
+        Assert.Equal(0, result.FrozenBalanceForEnergy);
     }
 
     // --- GetNowBlockAsync ---

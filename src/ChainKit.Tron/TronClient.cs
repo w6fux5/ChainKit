@@ -465,6 +465,10 @@ public class TronClient
 
     /// <summary>
     /// Gets resource information (bandwidth, energy, staking) for an address.
+    /// Merges data from GetAccountAsync (staking amounts from frozenV2) and
+    /// GetAccountResourceAsync (bandwidth/energy limits and usage).
+    /// Note: Delegation info requires the /wallet/getdelegatedresourceV2 endpoint
+    /// which is not yet supported; delegation arrays are returned empty.
     /// </summary>
     public async Task<TronResult<ResourceInfo>> GetResourceInfoAsync(
         string address, CancellationToken ct = default)
@@ -472,15 +476,22 @@ public class TronClient
         try
         {
             var hexAddress = ResolveHexAddress(address);
-            var resourceInfo = await Provider.GetAccountResourceAsync(hexAddress, ct);
+
+            // Fetch account info (staking data) and resource info (bandwidth/energy) in parallel
+            var accountTask = Provider.GetAccountAsync(hexAddress, ct);
+            var resourceTask = Provider.GetAccountResourceAsync(hexAddress, ct);
+            await Task.WhenAll(accountTask, resourceTask);
+
+            var accountInfo = accountTask.Result;
+            var resourceInfo = resourceTask.Result;
 
             return TronResult<ResourceInfo>.Ok(new ResourceInfo(
                 BandwidthTotal: resourceInfo.FreeBandwidthLimit + resourceInfo.TotalBandwidthLimit,
                 BandwidthUsed: resourceInfo.FreeBandwidthUsed + resourceInfo.TotalBandwidthUsed,
                 EnergyTotal: resourceInfo.EnergyLimit,
                 EnergyUsed: resourceInfo.EnergyUsed,
-                StakedForBandwidth: 0m, // Would require additional account query
-                StakedForEnergy: 0m,
+                StakedForBandwidth: (decimal)accountInfo.FrozenBalanceForBandwidth / SunPerTrx,
+                StakedForEnergy: (decimal)accountInfo.FrozenBalanceForEnergy / SunPerTrx,
                 DelegationsOut: Array.Empty<DelegationInfo>(),
                 DelegationsIn: Array.Empty<DelegationInfo>()));
         }

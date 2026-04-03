@@ -53,7 +53,28 @@ public class TronHttpProvider : ITronProvider
             && arEl.TryGetProperty("energy_usage", out var euEl) ? euEl.GetInt64() : 0;
         var createTime = root.TryGetProperty("create_time", out var ctEl) ? ctEl.GetInt64() : 0;
 
-        return new AccountInfo(addr, balance, netUsage, energyUsage, createTime);
+        // Parse frozenV2 array for Stake 2.0 staked amounts.
+        // Each element has optional "type" (string: "BANDWIDTH" or "ENERGY", absent = BANDWIDTH)
+        // and optional "amount" (long, in SUN).
+        long frozenBandwidth = 0;
+        long frozenEnergy = 0;
+        if (root.TryGetProperty("frozenV2", out var frozenV2El) && frozenV2El.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in frozenV2El.EnumerateArray())
+            {
+                var amount = entry.TryGetProperty("amount", out var amountEl) ? amountEl.GetInt64() : 0;
+                if (amount == 0) continue;
+
+                var type = entry.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? "" : "";
+                if (type.Equals("ENERGY", StringComparison.OrdinalIgnoreCase))
+                    frozenEnergy += amount;
+                else
+                    frozenBandwidth += amount;
+            }
+        }
+
+        return new AccountInfo(addr, balance, netUsage, energyUsage, createTime,
+            frozenBandwidth, frozenEnergy);
     }
 
     public async Task<BlockInfo> GetNowBlockAsync(CancellationToken ct = default)

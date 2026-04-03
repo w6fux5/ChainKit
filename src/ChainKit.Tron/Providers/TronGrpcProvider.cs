@@ -535,7 +535,24 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         if (accountResourceBytes.Length > 0)
             energyUsage = ParseVarintField(accountResourceBytes, 1);
 
-        return new AccountInfo(addrHex, balance, netUsage, energyUsage, createTime);
+        // Parse frozenV2 (field 34, repeated sub-message).
+        // Each FreezeV2 message: field 1 (enum type: 0=BANDWIDTH, 1=ENERGY), field 2 (int64 amount).
+        long frozenBandwidth = 0;
+        long frozenEnergy = 0;
+        var frozenV2Entries = ParseRepeatedBytesField(data, 34);
+        foreach (var entry in frozenV2Entries)
+        {
+            var amount = ParseVarintField(entry, 2);
+            if (amount == 0) continue;
+            var type = ParseVarintField(entry, 1); // 0 = BANDWIDTH, 1 = ENERGY
+            if (type == 1)
+                frozenEnergy += amount;
+            else
+                frozenBandwidth += amount;
+        }
+
+        return new AccountInfo(addrHex, balance, netUsage, energyUsage, createTime,
+            frozenBandwidth, frozenEnergy);
     }
 
     private static BlockInfo ParseBlockInfo(byte[] data)

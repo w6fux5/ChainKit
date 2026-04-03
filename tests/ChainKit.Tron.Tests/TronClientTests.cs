@@ -572,6 +572,16 @@ public class TronClientTests
     [Fact]
     public async Task GetResourceInfoAsync_Success_ReturnsResourceInfo()
     {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo(
+                Address: "41a1b2c3d4e5f60000000000000000000000000001",
+                Balance: 50_000_000,
+                NetUsage: 0,
+                EnergyUsage: 0,
+                CreateTime: 1609459200000,
+                FrozenBalanceForBandwidth: 10_000_000, // 10 TRX staked for bandwidth
+                FrozenBalanceForEnergy: 25_000_000));  // 25 TRX staked for energy
+
         _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AccountResourceInfo(
                 FreeBandwidthLimit: 5000,
@@ -588,11 +598,33 @@ public class TronClientTests
         Assert.Equal(3000, result.Data.BandwidthUsed);    // 1000 + 2000
         Assert.Equal(100000, result.Data.EnergyTotal);
         Assert.Equal(50000, result.Data.EnergyUsed);
+        Assert.Equal(10m, result.Data.StakedForBandwidth);  // 10_000_000 SUN = 10 TRX
+        Assert.Equal(25m, result.Data.StakedForEnergy);     // 25_000_000 SUN = 25 TRX
+    }
+
+    [Fact]
+    public async Task GetResourceInfoAsync_ZeroStaking_ReturnsZeroStakedAmounts()
+    {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo(
+                Address: "41a1b2c3d4e5f60000000000000000000000000001",
+                Balance: 1_000_000, NetUsage: 0, EnergyUsage: 0, CreateTime: 0));
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(600, 0, 0, 0, 0, 0));
+
+        var result = await _client.GetResourceInfoAsync("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+
+        Assert.True(result.Success);
+        Assert.Equal(0m, result.Data!.StakedForBandwidth);
+        Assert.Equal(0m, result.Data.StakedForEnergy);
     }
 
     [Fact]
     public async Task GetResourceInfoAsync_ProviderThrows_ReturnsFailResult()
     {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("Network error"));
         _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Network error"));
 
