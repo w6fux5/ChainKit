@@ -501,25 +501,18 @@ public class TronClient
     }
 
     /// <summary>
-    /// Deploys a standard TRC20 token using a pre-compiled template.
-    /// Currently returns a failure because the template bytecode is not yet compiled.
-    /// Use <see cref="DeployContractAsync"/> with custom bytecode instead.
+    /// Deploys a standard TRC20 token using the pre-compiled template from
+    /// <see cref="Trc20Template"/>. The template bytecode supports mint+burn;
+    /// the <see cref="Trc20TokenOptions.Mintable"/> and
+    /// <see cref="Trc20TokenOptions.Burnable"/> flags only affect the ABI
+    /// returned by <see cref="Trc20Template.GetAbi"/>.
     /// </summary>
     public Task<TronResult<DeployResult>> DeployTrc20TokenAsync(
         TronAccount account, Trc20TokenOptions options, CancellationToken ct = default)
     {
-        try
-        {
-            var bytecode = Trc20Template.GetBytecode(options);
-            var abi = Trc20Template.GetAbi(options);
-            return DeployContractAsync(account, bytecode, abi, DefaultFeeLimit, ct);
-        }
-        catch (NotImplementedException)
-        {
-            return Task.FromResult(TronResult<DeployResult>.Fail(
-                TronErrorCode.ContractValidationFailed,
-                "TRC20 template bytecode not yet compiled. Use DeployContractAsync with custom bytecode."));
-        }
+        var bytecode = Trc20Template.GetBytecode(options);
+        var abi = Trc20Template.GetAbi(options);
+        return DeployContractAsync(account, bytecode, abi, DefaultFeeLimit, ct);
     }
 
     // === Contract Helpers ===

@@ -519,15 +519,21 @@ public class TronClientTests
     // === DeployTrc20TokenAsync ===
 
     [Fact]
-    public async Task DeployTrc20TokenAsync_ReturnsNotImplementedFail()
+    public async Task DeployTrc20TokenAsync_ProducesValidBytecodeAndAttemptsDeployment()
     {
+        // With real template bytecode, DeployTrc20TokenAsync now proceeds to
+        // DeployContractAsync, which calls Provider.GetNowBlockAsync.
+        // Without mock setup for that call, it will fail at the provider level,
+        // NOT with "not yet compiled".
         var account = TronAccount.FromPrivateKey(TestPrivateKey);
         var options = new Trc20TokenOptions("Test", "TST", 18, BigInteger.Parse("1000000000000000000000000"));
 
         var result = await _client.DeployTrc20TokenAsync(account, options);
 
+        // The call should fail (mocked provider has no block setup),
+        // but the error must NOT be the old "not yet compiled" message.
         Assert.False(result.Success);
-        Assert.Contains("not yet compiled", result.Error!.Message);
+        Assert.DoesNotContain("not yet compiled", result.Error!.Message);
     }
 
     // === GetTrc20Contract ===
