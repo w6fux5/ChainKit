@@ -32,6 +32,7 @@
 ## 文件
 
 - `docs/decisions/` — 架構決策紀錄（ADR）
+- `docs/tron-sdk-usage-guide.md` — Tron SDK 使用指南（含完整程式碼範例）
 - `docs/tron-sdk-development-summary.md` — Tron SDK 開發總結
 - `docs/superpowers/specs/` — 設計規格
 - `docs/superpowers/plans/` — 實作計畫
