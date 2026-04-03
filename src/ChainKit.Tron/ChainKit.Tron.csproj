@@ -18,4 +18,8 @@
     <PackageReference Include="Grpc.Tools" Version="2.80.0" PrivateAssets="All" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Protobuf Include="Protocol\Protobuf\*.proto" GrpcServices="None" ProtoRoot="Protocol\Protobuf" />
+  </ItemGroup>
+
 </Project>
