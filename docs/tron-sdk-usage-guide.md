@@ -841,6 +841,54 @@ SDK 中涉及代幣金額的地方都同時提供兩種格式：
 
 ---
 
+## 工具類
+
+### TronConverter — 單位轉換
+
+低階 API 回傳的金額是 Sun（long）和 token raw amount（BigInteger），`TronConverter` 提供轉換：
+
+```csharp
+using ChainKit.Tron.Crypto;
+
+// Sun ↔ TRX（1 TRX = 1,000,000 Sun）
+decimal trx = TronConverter.SunToTrx(1_500_000);   // 1.5
+long sun = TronConverter.TrxToSun(1.5m);            // 1_500_000
+
+// Token raw amount ↔ 人類可讀金額
+decimal amount = TronConverter.ToTokenAmount(20_200_000, decimals: 6);  // 20.2 (USDT)
+BigInteger raw = TronConverter.ToRawAmount(20.2m, decimals: 6);         // 20_200_000
+```
+
+> 高階 API（`TronClient`）已自動轉換，不需要手動呼叫 `TronConverter`。
+> 此工具主要給使用低階 API（`ITronProvider`、`TransactionBuilder`）的使用者。
+
+### 其他工具
+
+```csharp
+using ChainKit.Core.Extensions;
+using ChainKit.Tron.Crypto;
+
+// Hex 轉換
+byte[] bytes = "41abcdef".FromHex();
+string hex = bytes.ToHex();                      // "41abcdef"
+
+// Base58Check 轉換
+string base58 = bytes.ToBase58Check();
+byte[] decoded = base58.FromBase58Check();
+
+// Tron 地址轉換
+string hexAddr = TronAddress.ToHex("T...");      // "41..."
+string b58Addr = TronAddress.ToBase58("41...");   // "T..."
+bool valid = TronAddress.IsValid("T...");
+
+// ABI 編碼/解碼
+byte[] selector = AbiEncoder.EncodeFunctionSelector("transfer(address,uint256)");
+BigInteger value = AbiEncoder.DecodeUint256(data);
+string text = AbiEncoder.DecodeString(data);
+```
+
+---
+
 ## 資源清理
 
 ### IDisposable 使用

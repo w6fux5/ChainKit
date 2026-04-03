@@ -258,6 +258,20 @@ public static class AbiEncoder
 }
 ```
 
+### 單位轉換工具
+
+```csharp
+public static class TronConverter
+{
+    public static decimal SunToTrx(long sun);                              // Sun → TRX
+    public static long TrxToSun(decimal trx);                              // TRX → Sun
+    public static decimal ToTokenAmount(BigInteger rawAmount, int decimals); // raw → 人類可讀
+    public static BigInteger ToRawAmount(decimal amount, int decimals);      // 人類可讀 → raw
+}
+```
+
+供使用低階 API 的用戶轉換單位。高階 API 已自動處理。
+
 ---
 
 ## ChainKit.Tron — Protocol（交易構建）
