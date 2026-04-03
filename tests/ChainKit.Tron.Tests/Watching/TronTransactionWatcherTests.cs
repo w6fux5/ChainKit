@@ -330,8 +330,11 @@ public class TronTransactionWatcherTests
         Assert.NotNull(received);
         Assert.Equal("trc20tx", received!.TxId);
         Assert.Equal(contractAddr, received.ContractAddress);
-        // No provider supplied — amount is raw
-        Assert.Equal((decimal)tokenAmount, received.Amount);
+        // RawAmount is always present
+        Assert.Equal((decimal)tokenAmount, received.RawAmount);
+        // No provider supplied and unknown token — Amount is null
+        Assert.Null(received.Amount);
+        Assert.Equal(0, received.Decimals);
     }
 
     [Fact]
@@ -358,8 +361,11 @@ public class TronTransactionWatcherTests
         Assert.NotNull(received);
         Assert.Equal("usdt_tx", received!.TxId);
         Assert.Equal("USDT", received.Symbol);
+        // RawAmount is always the on-chain value
+        Assert.Equal((decimal)tokenAmount, received.RawAmount);
         // 20_200_000 / 10^6 = 20.2
         Assert.Equal(20.2m, received.Amount);
+        Assert.Equal(6, received.Decimals);
 
         // Provider should NOT have been called for symbol/decimals (known token)
         await provider.DidNotReceive().TriggerConstantContractAsync(
@@ -404,7 +410,9 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(received);
         Assert.Equal("WETH", received!.Symbol);
+        Assert.Equal((decimal)tokenAmount, received.RawAmount);
         Assert.Equal(5m, received.Amount); // 5e18 / 10^18 = 5.0
+        Assert.Equal(18, received.Decimals);
     }
 
     [Fact]
@@ -428,8 +436,10 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(received);
         Assert.Equal("USDT", received!.Symbol);
+        Assert.Equal((decimal)tokenAmount, received.RawAmount);
         // 20_200_000 / 10^6 = 20.2 — known token decimals used even without provider
         Assert.Equal(20.2m, received.Amount);
+        Assert.Equal(6, received.Decimals);
     }
 
     [Fact]
@@ -453,7 +463,9 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(received);
         Assert.Equal("", received!.Symbol);
-        Assert.Equal((decimal)tokenAmount, received.Amount); // raw, unknown token
+        Assert.Equal((decimal)tokenAmount, received.RawAmount); // raw, always present
+        Assert.Null(received.Amount); // unknown token — can't convert
+        Assert.Equal(0, received.Decimals);
     }
 
     /// <summary>

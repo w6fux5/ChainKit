@@ -19,7 +19,12 @@ public enum TransactionType
     Stake, Unstake, Delegate, Undelegate, Other
 }
 
-public record TokenTransferInfo(string ContractAddress, string Symbol, int Decimals, decimal Amount);
+public record TokenTransferInfo(
+    string ContractAddress,
+    string Symbol,           // "" if unknown
+    int Decimals,            // 0 if unknown
+    decimal RawAmount,       // always correct, original on-chain value (smallest unit)
+    decimal? Amount);        // converted human-readable amount, null if decimals unknown
 public record ResourceCost(decimal TrxBurned, long BandwidthUsed, long EnergyUsed, decimal BandwidthTrxCost, decimal EnergyTrxCost);
 public record FailureInfo(FailureReason Reason, string Message, string? RevertMessage, string? RawResult);
 

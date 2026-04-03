@@ -118,7 +118,9 @@ public class TronTransactionWatcher : IAsyncDisposable
             {
                 // Resolve token symbol + decimals if provider is available
                 string symbol = "";
-                decimal resolvedAmount = trc20Info.Amount;
+                decimal rawAmount = trc20Info.Amount;
+                decimal? convertedAmount = null;
+                int decimals = 0;
 
                 if (_provider is not null && !string.IsNullOrEmpty(trc20Info.ContractAddress))
                 {
@@ -127,8 +129,9 @@ public class TronTransactionWatcher : IAsyncDisposable
                         var tokenInfo = await _tokenCache.GetOrResolveAsync(
                             trc20Info.ContractAddress, _provider, ct);
                         symbol = tokenInfo.Symbol;
+                        decimals = tokenInfo.Decimals;
                         if (tokenInfo.Decimals > 0)
-                            resolvedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                            convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
                     }
                     catch { /* resolution failed — fall through to known-token lookup */ }
                 }
@@ -138,14 +141,17 @@ public class TronTransactionWatcher : IAsyncDisposable
                     var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
                     if (tokenInfo != null)
                     {
-                        resolvedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                        decimals = tokenInfo.Decimals;
+                        if (tokenInfo.Decimals > 0)
+                            convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
                         symbol = tokenInfo.Symbol;
                     }
                 }
 
                 OnTrc20Received?.Invoke(this, new Trc20ReceivedEventArgs(
                     tx.TxId, tx.FromAddress, effectiveTo,
-                    trc20Info.ContractAddress, symbol, resolvedAmount,
+                    trc20Info.ContractAddress, symbol,
+                    rawAmount, convertedAmount, decimals,
                     block.BlockNumber, block.Timestamp));
             }
         }

@@ -15,7 +15,10 @@ public record TrxReceivedEventArgs(
 
 public record Trc20ReceivedEventArgs(
     string TxId, string FromAddress, string ToAddress,
-    string ContractAddress, string Symbol, decimal Amount,
+    string ContractAddress, string Symbol,
+    decimal RawAmount,       // always correct
+    decimal? Amount,         // null if decimals unknown
+    int Decimals,            // 0 if unknown
     long BlockNumber, DateTimeOffset Timestamp);
 
 public record TransactionConfirmedEventArgs(

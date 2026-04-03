@@ -1,6 +1,8 @@
 namespace ChainKit.Tron.Models;
 
-public record BalanceInfo(decimal TrxBalance, IReadOnlyDictionary<string, decimal> Trc20Balances);
+public record Trc20BalanceInfo(decimal RawBalance, decimal? Balance, string Symbol, int Decimals);
+
+public record BalanceInfo(decimal TrxBalance, IReadOnlyDictionary<string, Trc20BalanceInfo> Trc20Balances);
 
 public record AccountOverview(
     string Address, decimal TrxBalance,

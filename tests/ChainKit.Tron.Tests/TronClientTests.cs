@@ -148,7 +148,7 @@ public class TronClientTests
         Assert.True(result.Success);
         Assert.Equal(10m, result.Data!.TrxBalance);
         Assert.Single(result.Data.Trc20Balances);
-        Assert.Equal(0m, result.Data.Trc20Balances["TRC20ContractAddr"]);
+        Assert.Equal(0m, result.Data.Trc20Balances["TRC20ContractAddr"].RawBalance);
     }
 
     [Fact]
@@ -170,8 +170,12 @@ public class TronClientTests
 
         Assert.True(result.Success);
         Assert.Equal(10m, result.Data!.TrxBalance);
+        // Raw balance is always present
+        Assert.Equal(20_200_000m, result.Data.Trc20Balances[usdtAddr].RawBalance);
         // 20_200_000 / 10^6 = 20.2
-        Assert.Equal(20.2m, result.Data.Trc20Balances[usdtAddr]);
+        Assert.Equal(20.2m, result.Data.Trc20Balances[usdtAddr].Balance);
+        Assert.Equal("USDT", result.Data.Trc20Balances[usdtAddr].Symbol);
+        Assert.Equal(6, result.Data.Trc20Balances[usdtAddr].Decimals);
 
         // Provider should NOT have been called for symbol/decimals (known token)
         await _provider.DidNotReceive().TriggerConstantContractAsync(
@@ -195,7 +199,7 @@ public class TronClientTests
 
         Assert.True(result.Success);
         Assert.Equal(5m, result.Data!.TrxBalance);
-        Assert.Equal(0m, result.Data.Trc20Balances["SomeTRC20"]);
+        Assert.Equal(0m, result.Data.Trc20Balances["SomeTRC20"].RawBalance);
     }
 
     [Fact]
@@ -400,6 +404,7 @@ public class TronClientTests
         Assert.NotNull(detail.TokenTransfer);
         Assert.Equal("TTKN", detail.TokenTransfer!.Symbol);
         Assert.Equal(6, detail.TokenTransfer.Decimals);
+        Assert.Equal(1_000_000m, detail.TokenTransfer.RawAmount); // raw on-chain value
         Assert.Equal(1m, detail.TokenTransfer.Amount); // 1000000 / 10^6 = 1.0
         Assert.StartsWith("T", detail.TokenTransfer.ContractAddress);
     }
@@ -434,6 +439,7 @@ public class TronClientTests
         var detail = result.Data!;
         Assert.Equal("USDT", detail.TokenTransfer!.Symbol);
         Assert.Equal(6, detail.TokenTransfer.Decimals);
+        Assert.Equal(20_200_000m, detail.TokenTransfer.RawAmount); // raw on-chain value
         Assert.Equal(20.2m, detail.TokenTransfer.Amount);
 
         // Provider should NOT have been called for symbol/decimals (known token)

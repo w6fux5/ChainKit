@@ -205,15 +205,17 @@ public class TronClient
                 // Resolve token symbol + decimals via three-layer cache
                 var contractAddr = txInfo.ContractAddress ?? "";
                 var tokenInfo = await TokenCache.GetOrResolveAsync(contractAddr, Provider, ct);
-                var convertedAmount = tokenInfo.Decimals > 0
-                    ? (decimal)rawAmount / (decimal)Math.Pow(10, tokenInfo.Decimals)
-                    : (decimal)rawAmount;
-                amount = convertedAmount;
+                var rawAmountDecimal = (decimal)rawAmount;
+                decimal? convertedAmount = tokenInfo.Decimals > 0
+                    ? rawAmountDecimal / (decimal)Math.Pow(10, tokenInfo.Decimals)
+                    : null;
+                amount = convertedAmount ?? rawAmountDecimal;
 
                 tokenTransfer = new TokenTransferInfo(
                     ContractAddress: FormatAddress(contractAddr),
                     Symbol: tokenInfo.Symbol,
                     Decimals: tokenInfo.Decimals,
+                    RawAmount: rawAmountDecimal,
                     Amount: convertedAmount);
             }
             else if (type == TransactionType.Stake || type == TransactionType.Unstake
@@ -266,7 +268,7 @@ public class TronClient
             var accountInfo = await Provider.GetAccountAsync(hexAddress, ct);
             var trxBalance = (decimal)accountInfo.Balance / SunPerTrx;
 
-            var trc20Balances = new Dictionary<string, decimal>();
+            var trc20Balances = new Dictionary<string, Trc20BalanceInfo>();
 
             foreach (var contract in trc20Contracts)
             {
@@ -283,15 +285,16 @@ public class TronClient
 
                     // Resolve decimals via three-layer cache and convert
                     var tokenInfo = await TokenCache.GetOrResolveAsync(contractHex, Provider, ct);
-                    var convertedBalance = tokenInfo.Decimals > 0
-                        ? (decimal)rawBalance / (decimal)Math.Pow(10, tokenInfo.Decimals)
-                        : (decimal)rawBalance;
-                    trc20Balances[contract] = convertedBalance;
+                    var rawBalanceDecimal = (decimal)rawBalance;
+                    decimal? convertedBalance = tokenInfo.Decimals > 0
+                        ? rawBalanceDecimal / (decimal)Math.Pow(10, tokenInfo.Decimals)
+                        : null;
+                    trc20Balances[contract] = new Trc20BalanceInfo(rawBalanceDecimal, convertedBalance, tokenInfo.Symbol, tokenInfo.Decimals);
                 }
                 catch
                 {
                     // If a particular TRC20 query fails, report zero
-                    trc20Balances[contract] = 0m;
+                    trc20Balances[contract] = new Trc20BalanceInfo(0m, 0m, "", 0);
                 }
             }
 
