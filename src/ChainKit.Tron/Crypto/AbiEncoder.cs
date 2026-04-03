@@ -84,6 +84,30 @@ public static class AbiEncoder
         return result;
     }
 
+    public static byte[] EncodeBurnFrom(string fromHex, BigInteger amount)
+    {
+        var selector = EncodeFunctionSelector("burnFrom(address,uint256)");
+        var addr = EncodeAddress(fromHex);
+        var amt = EncodeUint256(amount);
+        var result = new byte[selector.Length + addr.Length + amt.Length];
+        Buffer.BlockCopy(selector, 0, result, 0, selector.Length);
+        Buffer.BlockCopy(addr, 0, result, selector.Length, addr.Length);
+        Buffer.BlockCopy(amt, 0, result, selector.Length + addr.Length, amt.Length);
+        return result;
+    }
+
+    public static byte[] EncodeAllowance(string ownerHex, string spenderHex)
+    {
+        var selector = EncodeFunctionSelector("allowance(address,address)");
+        var owner = EncodeAddress(ownerHex);
+        var spender = EncodeAddress(spenderHex);
+        var result = new byte[selector.Length + owner.Length + spender.Length];
+        Buffer.BlockCopy(selector, 0, result, 0, selector.Length);
+        Buffer.BlockCopy(owner, 0, result, selector.Length, owner.Length);
+        Buffer.BlockCopy(spender, 0, result, selector.Length + owner.Length, spender.Length);
+        return result;
+    }
+
     public static BigInteger DecodeUint256(byte[] data)
     {
         var slice = data.Length > 32 ? data[^32..] : data;
