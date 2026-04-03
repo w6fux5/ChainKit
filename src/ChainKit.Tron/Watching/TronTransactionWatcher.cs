@@ -1,13 +1,17 @@
 using System.Numerics;
 using ChainKit.Core.Extensions;
+using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
+using ChainKit.Tron.Providers;
 
 namespace ChainKit.Tron.Watching;
 
 public class TronTransactionWatcher : IAsyncDisposable
 {
     private readonly ITronBlockStream _stream;
+    private readonly ITronProvider? _provider;
+    private readonly TokenInfoCache _tokenCache = new();
     private readonly HashSet<string> _watchedAddresses = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
     private CancellationTokenSource? _cts;
@@ -16,9 +20,10 @@ public class TronTransactionWatcher : IAsyncDisposable
     // TRC20 transfer(address,uint256) selector: a9059cbb
     private static readonly byte[] Trc20TransferSelector = { 0xa9, 0x05, 0x9c, 0xbb };
 
-    public TronTransactionWatcher(ITronBlockStream stream)
+    public TronTransactionWatcher(ITronBlockStream stream, ITronProvider? provider = null)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        _provider = provider;
     }
 
     public void WatchAddress(string address)
@@ -76,12 +81,12 @@ public class TronTransactionWatcher : IAsyncDisposable
                              || _watchedAddresses.Contains(tx.FromAddress);
                 }
                 if (isWatched)
-                    ProcessTransaction(tx, block);
+                    await ProcessTransactionAsync(tx, block, ct);
             }
         }
     }
 
-    private void ProcessTransaction(TronBlockTransaction tx, TronBlock block)
+    private async Task ProcessTransactionAsync(TronBlockTransaction tx, TronBlock block, CancellationToken ct)
     {
         // Determine transaction type and fire appropriate event
         if (tx.ContractType == "TransferContract")
@@ -111,9 +116,26 @@ public class TronTransactionWatcher : IAsyncDisposable
             }
             if (toWatched)
             {
+                // Resolve token symbol + decimals if provider is available
+                string symbol = "";
+                decimal resolvedAmount = trc20Info.Amount;
+
+                if (_provider is not null && !string.IsNullOrEmpty(trc20Info.ContractAddress))
+                {
+                    try
+                    {
+                        var tokenInfo = await _tokenCache.GetOrResolveAsync(
+                            trc20Info.ContractAddress, _provider, ct);
+                        symbol = tokenInfo.Symbol;
+                        if (tokenInfo.Decimals > 0)
+                            resolvedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                    }
+                    catch { /* resolution failed — fire with raw values */ }
+                }
+
                 OnTrc20Received?.Invoke(this, new Trc20ReceivedEventArgs(
                     tx.TxId, tx.FromAddress, effectiveTo,
-                    trc20Info.ContractAddress, "", trc20Info.Amount,
+                    trc20Info.ContractAddress, symbol, resolvedAmount,
                     block.BlockNumber, block.Timestamp));
             }
         }

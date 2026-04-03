@@ -19,6 +19,7 @@ public class TronClient
     private const long DefaultFeeLimit = 100_000_000; // 100 TRX
 
     public ITronProvider Provider { get; }
+    internal TokenInfoCache TokenCache { get; } = new();
 
     public TronClient(ITronProvider provider)
     {
@@ -199,13 +200,20 @@ public class TronClient
                     : System.Numerics.BigInteger.Zero;
 
                 toAddress = FormatAddress(recipientHex);
-                amount = (decimal)rawAmount; // Raw value — caller needs decimals to interpret
+
+                // Resolve token symbol + decimals via three-layer cache
+                var contractAddr = txInfo.ContractAddress ?? "";
+                var tokenInfo = await TokenCache.GetOrResolveAsync(contractAddr, Provider, ct);
+                var convertedAmount = tokenInfo.Decimals > 0
+                    ? (decimal)rawAmount / (decimal)Math.Pow(10, tokenInfo.Decimals)
+                    : (decimal)rawAmount;
+                amount = convertedAmount;
 
                 tokenTransfer = new TokenTransferInfo(
-                    ContractAddress: FormatAddress(txInfo.ContractAddress ?? ""),
-                    Symbol: "", // Would require additional contract call to resolve
-                    Decimals: 0, // Would require additional contract call to resolve
-                    Amount: (decimal)rawAmount);
+                    ContractAddress: FormatAddress(contractAddr),
+                    Symbol: tokenInfo.Symbol,
+                    Decimals: tokenInfo.Decimals,
+                    Amount: convertedAmount);
             }
             else if (type == TransactionType.Stake || type == TransactionType.Unstake
                      || type == TransactionType.Delegate || type == TransactionType.Undelegate)

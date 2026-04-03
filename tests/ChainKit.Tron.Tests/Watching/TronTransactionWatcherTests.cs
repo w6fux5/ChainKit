@@ -1,6 +1,9 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using NSubstitute;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
+using ChainKit.Tron.Providers;
 using ChainKit.Tron.Watching;
 using Xunit;
 
@@ -327,6 +330,119 @@ public class TronTransactionWatcherTests
         Assert.NotNull(received);
         Assert.Equal("trc20tx", received!.TxId);
         Assert.Equal(contractAddr, received.ContractAddress);
+        // No provider supplied — amount is raw
         Assert.Equal((decimal)tokenAmount, received.Amount);
+    }
+
+    [Fact]
+    public async Task Trc20Received_WithProvider_ResolvesSymbolAndConvertsAmount()
+    {
+        var provider = Substitute.For<ITronProvider>();
+
+        // Known USDT contract address
+        var contractAddr = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c";
+        long tokenAmount = 20_200_000; // 20.2 USDT (6 decimals)
+
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "usdt_tx");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream, provider);
+
+        Trc20ReceivedEventArgs? received = null;
+        watcher.OnTrc20Received += (_, e) => received = e;
+
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
+        Assert.Equal("usdt_tx", received!.TxId);
+        Assert.Equal("USDT", received.Symbol);
+        // 20_200_000 / 10^6 = 20.2
+        Assert.Equal(20.2m, received.Amount);
+
+        // Provider should NOT have been called for symbol/decimals (known token)
+        await provider.DidNotReceive().TriggerConstantContractAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Trc20Received_WithProvider_UnknownToken_ResolvesViaContract()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var contractAddr = "41" + new string('b', 40);
+        long tokenAmount = 5_000_000_000_000_000_000; // 5.0 with 18 decimals
+
+        // Mock symbol() return
+        var symbolBytes = BuildAbiString("WETH");
+        provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is<string>(s => s == "symbol()"),
+                Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(symbolBytes);
+
+        // Mock decimals() return = 18
+        var decimalsBytes = AbiEncoder.EncodeUint256(new BigInteger(18));
+        provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is<string>(s => s == "decimals()"),
+                Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(decimalsBytes);
+
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "weth_tx");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream, provider);
+
+        Trc20ReceivedEventArgs? received = null;
+        watcher.OnTrc20Received += (_, e) => received = e;
+
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
+        Assert.Equal("WETH", received!.Symbol);
+        Assert.Equal(5m, received.Amount); // 5e18 / 10^18 = 5.0
+    }
+
+    [Fact]
+    public async Task Trc20Received_WithoutProvider_ReturnsRawAmount()
+    {
+        // Watcher created without provider — no token resolution
+        var contractAddr = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c";
+        long tokenAmount = 20_200_000;
+
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "raw_tx");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream); // no provider
+
+        Trc20ReceivedEventArgs? received = null;
+        watcher.OnTrc20Received += (_, e) => received = e;
+
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
+        Assert.Equal("", received!.Symbol);
+        Assert.Equal((decimal)tokenAmount, received.Amount); // raw, no conversion
+    }
+
+    /// <summary>
+    /// Builds an ABI-encoded string return value (offset + length + data padded to 32 bytes).
+    /// </summary>
+    private static byte[] BuildAbiString(string value)
+    {
+        var strBytes = System.Text.Encoding.UTF8.GetBytes(value);
+        var paddedLen = ((strBytes.Length + 31) / 32) * 32;
+        var result = new byte[32 + 32 + paddedLen];
+        result[31] = 0x20;
+        var lenBytes = AbiEncoder.EncodeUint256(new BigInteger(strBytes.Length));
+        Buffer.BlockCopy(lenBytes, 0, result, 32, 32);
+        Buffer.BlockCopy(strBytes, 0, result, 64, strBytes.Length);
+        return result;
     }
 }

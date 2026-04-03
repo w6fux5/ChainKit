@@ -319,6 +319,21 @@ public class TronClientTests
         _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
 
+        // Mock symbol() and decimals() contract calls for the unknown contract
+        var symbolBytes = BuildAbiString("TTKN");
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is<string>(s => s == "symbol()"),
+                Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(symbolBytes);
+
+        var decimalsBytes = AbiEncoder.EncodeUint256(new BigInteger(6));
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is<string>(s => s == "decimals()"),
+                Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(decimalsBytes);
+
         var result = await _client.GetTransactionDetailAsync(txId);
 
         Assert.True(result.Success);
@@ -327,8 +342,49 @@ public class TronClientTests
         Assert.StartsWith("T", detail.FromAddress);
         Assert.StartsWith("T", detail.ToAddress); // Recipient decoded from ABI data
         Assert.NotNull(detail.TokenTransfer);
-        Assert.Equal(1000000m, detail.TokenTransfer!.Amount); // Raw amount (no decimals applied)
+        Assert.Equal("TTKN", detail.TokenTransfer!.Symbol);
+        Assert.Equal(6, detail.TokenTransfer.Decimals);
+        Assert.Equal(1m, detail.TokenTransfer.Amount); // 1000000 / 10^6 = 1.0
         Assert.StartsWith("T", detail.TokenTransfer.ContractAddress);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_Trc20Transfer_KnownUsdtToken_ResolvesWithoutProviderCall()
+    {
+        var txId = "usdt_tx";
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        // USDT mainnet contract address
+        var contractHex = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c";
+        // Amount: 20200000 raw = 20.2 USDT (6 decimals). 20200000 = 0x1343A40
+        var data = "a9059cbb" +
+                   "000000000000000000000000c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" +
+                   "0000000000000000000000000000000000000000000000000000000001343a40";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "TriggerSmartContract",
+                OwnerAddress: ownerHex,
+                ToAddress: "",
+                AmountSun: 0,
+                ContractAddress: contractHex,
+                ContractData: data));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        var detail = result.Data!;
+        Assert.Equal("USDT", detail.TokenTransfer!.Symbol);
+        Assert.Equal(6, detail.TokenTransfer.Decimals);
+        Assert.Equal(20.2m, detail.TokenTransfer.Amount);
+
+        // Provider should NOT have been called for symbol/decimals (known token)
+        await _provider.DidNotReceive().TriggerConstantContractAsync(
+            Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Is<string>(s => s == "symbol()" || s == "decimals()"),
+            Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -765,5 +821,22 @@ public class TronClientTests
         Assert.NotNull(contract);
         Assert.IsType<Trc20Contract>(contract);
         Assert.Equal("41a614f803b6fd780986a42c78ec9c7f77e6ded13c", contract.ContractAddress);
+    }
+
+    // === Helpers ===
+
+    /// <summary>
+    /// Builds an ABI-encoded string return value (offset + length + data padded to 32 bytes).
+    /// </summary>
+    private static byte[] BuildAbiString(string value)
+    {
+        var strBytes = System.Text.Encoding.UTF8.GetBytes(value);
+        var paddedLen = ((strBytes.Length + 31) / 32) * 32;
+        var result = new byte[32 + 32 + paddedLen];
+        result[31] = 0x20; // offset = 32
+        var lenBytes = AbiEncoder.EncodeUint256(new BigInteger(strBytes.Length));
+        Buffer.BlockCopy(lenBytes, 0, result, 32, 32);
+        Buffer.BlockCopy(strBytes, 0, result, 64, strBytes.Length);
+        return result;
     }
 }
