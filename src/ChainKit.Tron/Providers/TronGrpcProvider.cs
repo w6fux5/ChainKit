@@ -180,7 +180,78 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         if (tx.Ret.Count > 0)
             contractResult = tx.Ret[0].ContractRet.ToString();
 
-        return new TransactionInfoDto(txId, 0, 0, contractResult, 0, 0, 0);
+        // Parse contract details from the transaction
+        string contractType = "";
+        string ownerAddress = "";
+        string toAddress = "";
+        long amountSun = 0;
+        string? contractAddress = null;
+        string? contractData = null;
+
+        if (tx.RawData?.Contract.Count > 0)
+        {
+            var contract = tx.RawData.Contract[0];
+            contractType = contract.Type.ToString();
+
+            // The parameter is a google.protobuf.Any wrapping the specific contract message.
+            // We parse the inner bytes based on the contract type.
+            if (contract.Parameter?.Value != null)
+            {
+                var paramBytes = contract.Parameter.Value.ToByteArray();
+                switch (contract.Type)
+                {
+                    case Transaction.Types.Contract.Types.ContractType.TransferContract:
+                        // TransferContract: field 1 (bytes owner_address), field 2 (bytes to_address), field 3 (int64 amount)
+                        var ownerBytes = ParseBytesField(paramBytes, 1);
+                        var toBytes = ParseBytesField(paramBytes, 2);
+                        ownerAddress = ownerBytes.Length > 0 ? Convert.ToHexString(ownerBytes).ToLowerInvariant() : "";
+                        toAddress = toBytes.Length > 0 ? Convert.ToHexString(toBytes).ToLowerInvariant() : "";
+                        amountSun = ParseVarintField(paramBytes, 3);
+                        break;
+
+                    case Transaction.Types.Contract.Types.ContractType.TriggerSmartContract:
+                        // TriggerSmartContract: field 1 (bytes owner_address), field 2 (bytes contract_address),
+                        //   field 3 (int64 call_value), field 4 (bytes data)
+                        var tscOwner = ParseBytesField(paramBytes, 1);
+                        var tscContract = ParseBytesField(paramBytes, 2);
+                        var tscData = ParseBytesField(paramBytes, 4);
+                        ownerAddress = tscOwner.Length > 0 ? Convert.ToHexString(tscOwner).ToLowerInvariant() : "";
+                        contractAddress = tscContract.Length > 0 ? Convert.ToHexString(tscContract).ToLowerInvariant() : null;
+                        contractData = tscData.Length > 0 ? Convert.ToHexString(tscData).ToLowerInvariant() : null;
+                        break;
+
+                    case Transaction.Types.Contract.Types.ContractType.FreezeBalanceV2Contract:
+                    case Transaction.Types.Contract.Types.ContractType.UnfreezeBalanceV2Contract:
+                        var fbOwner = ParseBytesField(paramBytes, 1);
+                        ownerAddress = fbOwner.Length > 0 ? Convert.ToHexString(fbOwner).ToLowerInvariant() : "";
+                        amountSun = ParseVarintField(paramBytes, 2);
+                        break;
+
+                    case Transaction.Types.Contract.Types.ContractType.DelegateResourceContract:
+                    case Transaction.Types.Contract.Types.ContractType.UnDelegateResourceContract:
+                        var drOwner = ParseBytesField(paramBytes, 1);
+                        var drReceiver = ParseBytesField(paramBytes, 4);
+                        ownerAddress = drOwner.Length > 0 ? Convert.ToHexString(drOwner).ToLowerInvariant() : "";
+                        toAddress = drReceiver.Length > 0 ? Convert.ToHexString(drReceiver).ToLowerInvariant() : "";
+                        amountSun = ParseVarintField(paramBytes, 3);
+                        break;
+
+                    case Transaction.Types.Contract.Types.ContractType.CreateSmartContract:
+                        var cscOwner = ParseBytesField(paramBytes, 1);
+                        ownerAddress = cscOwner.Length > 0 ? Convert.ToHexString(cscOwner).ToLowerInvariant() : "";
+                        break;
+
+                    default:
+                        // For unrecognized types, try to extract owner_address (field 1) as best-effort
+                        var defaultOwner = ParseBytesField(paramBytes, 1);
+                        ownerAddress = defaultOwner.Length > 0 ? Convert.ToHexString(defaultOwner).ToLowerInvariant() : "";
+                        break;
+                }
+            }
+        }
+
+        return new TransactionInfoDto(txId, 0, 0, contractResult, 0, 0, 0,
+            contractType, ownerAddress, toAddress, amountSun, contractAddress, contractData);
     }
 
     public async Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default)

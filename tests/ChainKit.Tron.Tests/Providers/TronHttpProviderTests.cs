@@ -189,6 +189,102 @@ public class TronHttpProviderTests
         Assert.Contains("/wallet/gettransactionbyid", handler.LastRequestUri!.ToString());
     }
 
+    [Fact]
+    public async Task GetTransactionByIdAsync_ParsesTransferContractDetails()
+    {
+        var responseJson = """
+        {
+            "txID": "transfer_tx",
+            "ret": [{ "contractRet": "SUCCESS" }],
+            "raw_data": {
+                "contract": [{
+                    "type": "TransferContract",
+                    "parameter": {
+                        "value": {
+                            "owner_address": "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+                            "to_address": "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+                            "amount": 10000000
+                        }
+                    }
+                }],
+                "timestamp": 1700000000000
+            }
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionByIdAsync("transfer_tx");
+
+        Assert.Equal("transfer_tx", info.TxId);
+        Assert.Equal("TransferContract", info.ContractType);
+        Assert.Equal("41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", info.OwnerAddress);
+        Assert.Equal("41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3", info.ToAddress);
+        Assert.Equal(10000000, info.AmountSun);
+        Assert.Null(info.ContractAddress);
+        Assert.Null(info.ContractData);
+    }
+
+    [Fact]
+    public async Task GetTransactionByIdAsync_ParsesTriggerSmartContractDetails()
+    {
+        var responseJson = """
+        {
+            "txID": "trc20_tx",
+            "ret": [{ "contractRet": "SUCCESS" }],
+            "raw_data": {
+                "contract": [{
+                    "type": "TriggerSmartContract",
+                    "parameter": {
+                        "value": {
+                            "owner_address": "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+                            "contract_address": "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+                            "data": "a9059cbb000000000000000000000000c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d400000000000000000000000000000000000000000000000000000000000f4240"
+                        }
+                    }
+                }],
+                "timestamp": 1700000000000
+            }
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionByIdAsync("trc20_tx");
+
+        Assert.Equal("trc20_tx", info.TxId);
+        Assert.Equal("TriggerSmartContract", info.ContractType);
+        Assert.Equal("41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2", info.OwnerAddress);
+        Assert.Equal("41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3", info.ContractAddress);
+        Assert.StartsWith("a9059cbb", info.ContractData);
+    }
+
+    [Fact]
+    public async Task GetTransactionByIdAsync_NoRawData_ReturnsEmptyContractFields()
+    {
+        var responseJson = """
+        {
+            "txID": "minimal_tx",
+            "ret": [{ "contractRet": "SUCCESS" }]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionByIdAsync("minimal_tx");
+
+        Assert.Equal("minimal_tx", info.TxId);
+        Assert.Equal("", info.ContractType);
+        Assert.Equal("", info.OwnerAddress);
+        Assert.Equal("", info.ToAddress);
+        Assert.Equal(0, info.AmountSun);
+        Assert.Null(info.ContractAddress);
+        Assert.Null(info.ContractData);
+    }
+
     // --- GetTransactionInfoByIdAsync ---
 
     [Fact]

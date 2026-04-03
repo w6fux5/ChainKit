@@ -262,6 +262,192 @@ public class TronClientTests
         Assert.Contains("timeout", result.Error!.Message);
     }
 
+    [Fact]
+    public async Task GetTransactionDetailAsync_NativeTransfer_ParsesFromToAmount()
+    {
+        var txId = "native_tx";
+        // owner_address and to_address are hex (41-prefix, 21 bytes = 42 hex chars)
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var toHex = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "TransferContract",
+                OwnerAddress: ownerHex,
+                ToAddress: toHex,
+                AmountSun: 5_000_000)); // 5 TRX
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 1000, 0, 300));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        var detail = result.Data!;
+        Assert.Equal(TransactionType.NativeTransfer, detail.Type);
+        Assert.Equal(5m, detail.Amount);
+        // Addresses should be converted to base58
+        Assert.StartsWith("T", detail.FromAddress);
+        Assert.StartsWith("T", detail.ToAddress);
+        Assert.NotEmpty(detail.FromAddress);
+        Assert.NotEmpty(detail.ToAddress);
+        Assert.Null(detail.TokenTransfer);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_Trc20Transfer_ParsesTokenInfo()
+    {
+        var txId = "trc20_tx";
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var contractHex = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+        // TRC20 transfer ABI data: a9059cbb + padded address (32 bytes) + padded amount (32 bytes)
+        // Recipient: 41c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4 (strip 41 prefix for ABI encoding)
+        // Amount: 1000000 (0xF4240)
+        var data = "a9059cbb" +
+                   "000000000000000000000000c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" +
+                   "00000000000000000000000000000000000000000000000000000000000f4240";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "TriggerSmartContract",
+                OwnerAddress: ownerHex,
+                ToAddress: "",
+                AmountSun: 0,
+                ContractAddress: contractHex,
+                ContractData: data));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        var detail = result.Data!;
+        Assert.Equal(TransactionType.Trc20Transfer, detail.Type);
+        Assert.StartsWith("T", detail.FromAddress);
+        Assert.StartsWith("T", detail.ToAddress); // Recipient decoded from ABI data
+        Assert.NotNull(detail.TokenTransfer);
+        Assert.Equal(1000000m, detail.TokenTransfer!.Amount); // Raw amount (no decimals applied)
+        Assert.StartsWith("T", detail.TokenTransfer.ContractAddress);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_ContractCall_NonTransfer()
+    {
+        var txId = "contract_call_tx";
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var contractHex = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+        // approve(address,uint256) selector = 095ea7b3
+        var data = "095ea7b3" +
+                   "000000000000000000000000c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" +
+                   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 300, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "TriggerSmartContract",
+                OwnerAddress: ownerHex,
+                ContractAddress: contractHex,
+                ContractData: data));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 300, 1700000000000, "SUCCESS", 500, 5000, 0));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionType.ContractCall, result.Data!.Type);
+        Assert.Null(result.Data.TokenTransfer);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_Stake_ParsesAmountAndType()
+    {
+        var txId = "stake_tx";
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 400, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "FreezeBalanceV2Contract",
+                OwnerAddress: ownerHex,
+                AmountSun: 100_000_000)); // 100 TRX
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 400, 1700000000000, "SUCCESS", 0, 0, 300));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionType.Stake, result.Data!.Type);
+        Assert.Equal(100m, result.Data.Amount);
+        Assert.StartsWith("T", result.Data.FromAddress);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_ContractDeploy_ParsesType()
+    {
+        var txId = "deploy_tx";
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 500, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "CreateSmartContract",
+                OwnerAddress: ownerHex));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 500, 1700000000000, "SUCCESS", 10000, 50000, 0));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionType.ContractDeploy, result.Data!.Type);
+        Assert.StartsWith("T", result.Data.FromAddress);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_DelegateResource_ParsesType()
+    {
+        var txId = "delegate_tx";
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var receiverHex = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 600, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "DelegateResourceContract",
+                OwnerAddress: ownerHex,
+                ToAddress: receiverHex,
+                AmountSun: 50_000_000)); // 50 TRX
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 600, 1700000000000, "SUCCESS", 0, 0, 300));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionType.Delegate, result.Data!.Type);
+        Assert.Equal(50m, result.Data.Amount);
+        Assert.StartsWith("T", result.Data.FromAddress);
+        Assert.StartsWith("T", result.Data.ToAddress);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_UnknownType_ReturnsOther()
+    {
+        var txId = "unknown_tx";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 700, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "ProposalCreateContract",
+                OwnerAddress: "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 700, 1700000000000, "SUCCESS", 0, 0, 0));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionType.Other, result.Data!.Type);
+    }
+
     // === StakeTrxAsync ===
 
     [Fact]

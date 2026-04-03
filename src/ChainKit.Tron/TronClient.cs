@@ -174,15 +174,54 @@ public class TronClient
                     0m, 0m)
                 : null;
 
+            // Resolve from/to addresses (convert hex 41-prefix to base58 if present)
+            var fromAddress = FormatAddress(txInfo.OwnerAddress);
+            var toAddress = type == TransactionType.Trc20Transfer || type == TransactionType.ContractCall
+                ? FormatAddress(txInfo.ContractAddress ?? txInfo.ToAddress)
+                : FormatAddress(txInfo.ToAddress);
+
+            // Resolve amount and token transfer info
+            decimal amount = 0m;
+            TokenTransferInfo? tokenTransfer = null;
+
+            if (type == TransactionType.NativeTransfer)
+            {
+                amount = (decimal)txInfo.AmountSun / SunPerTrx;
+            }
+            else if (type == TransactionType.Trc20Transfer && txInfo.ContractData is not null && txInfo.ContractData.Length >= 72)
+            {
+                // Decode TRC20 transfer: selector(8) + address(64) + amount(64)
+                var data = txInfo.ContractData;
+                var recipientHex = "41" + data.Substring(8 + 24, 40); // strip 12 bytes zero-padding from 32-byte address
+                var amountHex = data.Substring(72); // remaining 64 hex chars = uint256
+                var rawAmount = amountHex.Length > 0
+                    ? new System.Numerics.BigInteger(Convert.FromHexString(amountHex.PadLeft(64, '0')), isUnsigned: true, isBigEndian: true)
+                    : System.Numerics.BigInteger.Zero;
+
+                toAddress = FormatAddress(recipientHex);
+                amount = (decimal)rawAmount; // Raw value — caller needs decimals to interpret
+
+                tokenTransfer = new TokenTransferInfo(
+                    ContractAddress: FormatAddress(txInfo.ContractAddress ?? ""),
+                    Symbol: "", // Would require additional contract call to resolve
+                    Decimals: 0, // Would require additional contract call to resolve
+                    Amount: (decimal)rawAmount);
+            }
+            else if (type == TransactionType.Stake || type == TransactionType.Unstake
+                     || type == TransactionType.Delegate || type == TransactionType.Undelegate)
+            {
+                amount = (decimal)txInfo.AmountSun / SunPerTrx;
+            }
+
             var detail = new TronTransactionDetail(
                 TxId: txId,
-                FromAddress: string.Empty,
-                ToAddress: string.Empty,
+                FromAddress: fromAddress,
+                ToAddress: toAddress,
                 Status: status,
                 Failure: failure,
                 Type: type,
-                Amount: 0m,
-                TokenTransfer: null,
+                Amount: amount,
+                TokenTransfer: tokenTransfer,
                 BlockNumber: blockNumber > 0 ? blockNumber : null,
                 Timestamp: timestamp,
                 Cost: cost);
@@ -536,6 +575,34 @@ public class TronClient
     }
 
     /// <summary>
+    /// Formats an address for display. If the address is a valid hex address
+    /// (starts with 41 and is 42 hex chars), converts to base58. Otherwise returns as-is.
+    /// Returns empty string for null/empty input.
+    /// </summary>
+    private static string FormatAddress(string? address)
+    {
+        if (string.IsNullOrEmpty(address))
+            return string.Empty;
+
+        // Convert hex addresses (41-prefix, 42 hex chars = 21 bytes) to base58
+        if (address.Length == 42
+            && address.StartsWith("41", StringComparison.OrdinalIgnoreCase)
+            && address.All(c => char.IsAsciiHexDigit(c)))
+        {
+            try
+            {
+                return TronAddress.ToBase58(address);
+            }
+            catch
+            {
+                return address;
+            }
+        }
+
+        return address;
+    }
+
+    /// <summary>
     /// Extracts ref block bytes and hash from block info.
     /// ref_block_bytes = last 2 bytes of block number.
     /// ref_block_hash = first 8 bytes of block ID (hex string).
@@ -600,11 +667,32 @@ public class TronClient
         return TransactionStatus.Confirmed;
     }
 
-    private static TransactionType DetermineTransactionType(TransactionInfoDto txInfo)
+    private static TransactionType DetermineTransactionType(TransactionInfoDto txInfo) => txInfo.ContractType switch
     {
-        // In the full implementation this would parse the contract type from raw transaction data.
-        // For now, return Other as we only have the DTO.
-        return TransactionType.Other;
+        "TransferContract" => TransactionType.NativeTransfer,
+        "TransferAssetContract" => TransactionType.Trc10Transfer,
+        "TriggerSmartContract" => ClassifySmartContractCall(txInfo.ContractData),
+        "CreateSmartContract" => TransactionType.ContractDeploy,
+        "FreezeBalanceContract" or "FreezeBalanceV2Contract" => TransactionType.Stake,
+        "UnfreezeBalanceContract" or "UnfreezeBalanceV2Contract" => TransactionType.Unstake,
+        "DelegateResourceContract" => TransactionType.Delegate,
+        "UnDelegateResourceContract" => TransactionType.Undelegate,
+        _ => TransactionType.Other
+    };
+
+    /// <summary>
+    /// Classifies a TriggerSmartContract call based on the ABI data prefix.
+    /// The selector <c>a9059cbb</c> is the keccak256 hash of <c>transfer(address,uint256)</c>.
+    /// </summary>
+    private static TransactionType ClassifySmartContractCall(string? contractData)
+    {
+        if (contractData is not null && contractData.Length >= 8)
+        {
+            var selector = contractData[..8].ToLowerInvariant();
+            if (selector == "a9059cbb") // transfer(address,uint256)
+                return TransactionType.Trc20Transfer;
+        }
+        return TransactionType.ContractCall;
     }
 
     private static FailureReason ParseFailureReason(string? contractResult) => contractResult switch

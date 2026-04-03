@@ -293,7 +293,40 @@ public class TronHttpProvider : ITronProvider
                 ? crEl.GetString() ?? "" : "";
         }
 
-        return new TransactionInfoDto(id, 0, 0, contractResult, 0, 0, 0);
+        // Parse contract details from raw_data.contract[0]
+        string contractType = "";
+        string ownerAddress = "";
+        string toAddress = "";
+        long amountSun = 0;
+        string? contractAddress = null;
+        string? contractData = null;
+
+        if (root.TryGetProperty("raw_data", out var rawDataEl)
+            && rawDataEl.TryGetProperty("contract", out var contractsEl)
+            && contractsEl.GetArrayLength() > 0)
+        {
+            var contract = contractsEl[0];
+            contractType = contract.TryGetProperty("type", out var typeEl)
+                ? typeEl.GetString() ?? "" : "";
+
+            if (contract.TryGetProperty("parameter", out var paramEl)
+                && paramEl.TryGetProperty("value", out var valueEl))
+            {
+                ownerAddress = valueEl.TryGetProperty("owner_address", out var ownerEl)
+                    ? ownerEl.GetString() ?? "" : "";
+                toAddress = valueEl.TryGetProperty("to_address", out var toEl)
+                    ? toEl.GetString() ?? "" : "";
+                amountSun = valueEl.TryGetProperty("amount", out var amtEl)
+                    ? amtEl.GetInt64() : 0;
+                contractAddress = valueEl.TryGetProperty("contract_address", out var caEl)
+                    ? caEl.GetString() : null;
+                contractData = valueEl.TryGetProperty("data", out var dataEl)
+                    ? dataEl.GetString() : null;
+            }
+        }
+
+        return new TransactionInfoDto(id, 0, 0, contractResult, 0, 0, 0,
+            contractType, ownerAddress, toAddress, amountSun, contractAddress, contractData);
     }
 
     private static TransactionInfoDto ParseTransactionInfo(string json, string txId)
