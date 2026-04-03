@@ -97,18 +97,13 @@ public class TronClient : IDisposable
             catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
             var data = AbiEncoder.EncodeTransfer(toHex, rawAmount);
 
-            var block = await Provider.GetNowBlockAsync(ct);
-            var (refBlockBytes, refBlockHash) = ExtractRefBlock(block);
-
-            // Use TriggerSmartContractAsync to get the transaction from the node
+            // Use TriggerSmartContractAsync to get the transaction from the node.
+            // The node already sets ref_block_bytes and ref_block_hash on the returned tx,
+            // so we sign it directly without modifying the raw_data.
             var tx = await Provider.TriggerSmartContractAsync(
                 from.HexAddress, contractHex, "transfer(address,uint256)",
                 data[4..], // strip selector — provider adds it
                 DefaultFeeLimit, 0, ct);
-
-            // Set ref block on the returned transaction
-            tx.RawData.RefBlockBytes = Google.Protobuf.ByteString.CopyFrom(refBlockBytes);
-            tx.RawData.RefBlockHash = Google.Protobuf.ByteString.CopyFrom(refBlockHash);
 
             var signed = TransactionUtils.Sign(tx, from.PrivateKey);
             var txId = TransactionUtils.ComputeTxId(signed).ToHex();
@@ -846,15 +841,17 @@ public class TronClient : IDisposable
             Array.Reverse(blockNumBytes);
         var refBlockBytes = blockNumBytes[^2..];
 
-        // ref_block_hash: first 8 bytes of the block ID
+        // ref_block_hash: bytes 8-15 of the block ID (hex positions 16..32).
+        // The Tron TAPOS mechanism uses the middle 8 bytes of the 32-byte block hash,
+        // NOT the first 8 bytes.
         byte[] refBlockHash;
-        if (!string.IsNullOrEmpty(block.BlockId) && block.BlockId.Length >= 16)
+        if (!string.IsNullOrEmpty(block.BlockId) && block.BlockId.Length >= 32)
         {
-            refBlockHash = block.BlockId[..16].FromHex();
+            refBlockHash = block.BlockId[16..32].FromHex();
         }
-        else if (block.BlockHeaderRawData.Length >= 8)
+        else if (block.BlockHeaderRawData.Length >= 16)
         {
-            refBlockHash = block.BlockHeaderRawData[..8];
+            refBlockHash = block.BlockHeaderRawData[8..16];
         }
         else
         {

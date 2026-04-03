@@ -4,6 +4,7 @@ using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol.Protobuf;
 using Google.Protobuf;
+using Google.Protobuf.Reflection;
 
 namespace ChainKit.Tron.Providers;
 
@@ -19,6 +20,18 @@ public class TronHttpProvider : ITronProvider, IDisposable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true
     };
+
+    /// <summary>
+    /// Protobuf TypeRegistry that includes all Tron contract message types.
+    /// Required for JsonFormatter to serialize Any-packed contract parameters.
+    /// </summary>
+    private static readonly TypeRegistry TronTypeRegistry = TypeRegistry.FromFiles(
+        BalanceContractReflection.Descriptor,
+        SmartContractReflection.Descriptor,
+        TronReflection.Descriptor);
+
+    private static readonly JsonFormatter ProtoJsonFormatter = new(
+        new JsonFormatter.Settings(false).WithTypeRegistry(TronTypeRegistry));
 
     public TronHttpProvider(string baseUrl, string? apiKey = null)
     {
@@ -95,7 +108,7 @@ public class TronHttpProvider : ITronProvider, IDisposable
     public async Task<Transaction> CreateTransactionAsync(Transaction transaction, CancellationToken ct = default)
     {
         // TronGrid's createtransaction endpoint accepts protobuf-JSON format
-        var txJson = JsonFormatter.Default.Format(transaction);
+        var txJson = ProtoJsonFormatter.Format(transaction);
         var response = await PostRawAsync("/wallet/createtransaction", txJson, ct);
         var parser = new JsonParser(JsonParser.Settings.Default);
         return parser.Parse<Transaction>(response);
@@ -103,13 +116,27 @@ public class TronHttpProvider : ITronProvider, IDisposable
 
     public async Task<BroadcastResult> BroadcastTransactionAsync(Transaction signedTx, CancellationToken ct = default)
     {
-        var txJson = JsonFormatter.Default.Format(signedTx);
-        var json = await PostRawAsync("/wallet/broadcasttransaction", txJson, ct);
+        // Use /wallet/broadcasthex with hex-encoded binary protobuf.
+        // The protobuf JSON format (with @type fields in Any) is rejected by the Tron
+        // node's fastjson parser due to its safeMode autoType restriction.
+        var rawBytes = signedTx.ToByteArray();
+        var hexTransaction = Convert.ToHexString(rawBytes).ToLowerInvariant();
+        var json = await PostAsync("/wallet/broadcasthex",
+            new { transaction = hexTransaction }, ct);
 
         var root = JsonDocument.Parse(json).RootElement;
         var success = root.TryGetProperty("result", out var resEl) && resEl.GetBoolean();
         var txId = root.TryGetProperty("txid", out var txIdEl) ? txIdEl.GetString() : null;
+        txId ??= root.TryGetProperty("txID", out var txIdEl2) ? txIdEl2.GetString() : null;
         var message = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : null;
+
+        // Also check for "code" field (e.g., "DUP_TRANSACTION_ERROR", "SIGERROR")
+        if (root.TryGetProperty("code", out var codeEl))
+        {
+            var code = codeEl.GetString() ?? "";
+            if (!code.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase) && !success)
+                message = message != null ? $"{code}: {message}" : code;
+        }
 
         // TronGrid returns hex-encoded error messages
         if (message != null && IsHexString(message))
@@ -156,7 +183,22 @@ public class TronHttpProvider : ITronProvider, IDisposable
 
         if (root.TryGetProperty("transaction", out var txEl))
         {
-            var parser = new JsonParser(JsonParser.Settings.Default);
+            // Parse the transaction from the node's response.
+            // Prefer raw_data_hex (binary protobuf of raw_data) over JSON parsing
+            // to ensure byte-exact fidelity when signing.
+            if (txEl.TryGetProperty("raw_data_hex", out var rawHexEl))
+            {
+                var rawDataHex = rawHexEl.GetString() ?? "";
+                var rawDataBytes = Convert.FromHexString(rawDataHex);
+                var rawData = Transaction.Types.raw.Parser.ParseFrom(rawDataBytes);
+                return new Transaction { RawData = rawData };
+            }
+
+            // Fallback: parse from JSON with unknown field tolerance
+            var parserSettings = JsonParser.Settings.Default
+                .WithIgnoreUnknownFields(true)
+                .WithTypeRegistry(TronTypeRegistry);
+            var parser = new JsonParser(parserSettings);
             return parser.Parse<Transaction>(txEl.GetRawText());
         }
 
@@ -570,8 +612,12 @@ public class TronHttpProvider : ITronProvider, IDisposable
             && crEl.GetArrayLength() > 0
                 ? crEl[0].GetString() ?? "" : "";
 
+        // Parse contract_address for deploy transactions
+        var contractAddress = root.TryGetProperty("contract_address", out var caEl)
+            ? caEl.GetString() : null;
+
         return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energy, net,
-            EnergyFee: energyFee, NetFee: netFee);
+            ContractAddress: contractAddress, EnergyFee: energyFee, NetFee: netFee);
     }
 
     private static bool IsHexString(string s) =>

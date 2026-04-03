@@ -193,7 +193,7 @@ public class TronHttpProviderTests
         Assert.True(result.Success);
         Assert.Equal("abc123def456", result.TxId);
         Assert.Null(result.Message);
-        Assert.Contains("/wallet/broadcasttransaction", handler.LastRequestUri!.ToString());
+        Assert.Contains("/wallet/broadcasthex", handler.LastRequestUri!.ToString());
     }
 
     [Fact]
