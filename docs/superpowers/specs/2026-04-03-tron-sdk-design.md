@@ -43,7 +43,8 @@ src/
     │   └── TronNetwork.cs
     ├── Contracts/                          → TRC20 合約管理
     │   ├── Trc20Contract.cs
-    │   └── Trc20Template.cs               → 內建 TRC20 Solidity bytecode
+    │   ├── Trc20Template.cs               → 內建 TRC20 Solidity bytecode
+    │   └── TokenInfoCache.cs              → 三層代幣資訊快取
     ├── Watching/                           → 交易監聽
     │   ├── ITronBlockStream.cs
     │   ├── ZmqBlockStream.cs
@@ -90,7 +91,7 @@ tests/
 | NetMQ | 4.0.2.2 | ZMQ 監聽 | MPL 2.0 |
 | Keccak-256 | 自行實作 | 地址 / ABI 雜湊 | — |
 
-全部純 C#（managed），跨平台，透過 `netstandard2.0` 支援 .NET 10。
+全部純 C#（managed），跨平台。目標框架為 `net10.0`（內部使用，所有消費者均為 .NET 10）。
 
 ### 加密庫選擇理由
 
@@ -356,15 +357,19 @@ public interface ITronProvider
     Task<BlockInfo> GetBlockByNumAsync(long num, CancellationToken ct = default);
 
     // 交易（Full Node）
-    Task<TransactionExtension> CreateTransactionAsync(Transaction transaction, CancellationToken ct = default);
+    Task<Transaction> CreateTransactionAsync(Transaction transaction, CancellationToken ct = default);
     Task<BroadcastResult> BroadcastTransactionAsync(Transaction signedTx, CancellationToken ct = default);
-    Task<TransactionInfo> GetTransactionByIdAsync(string txId, CancellationToken ct = default);
+    Task<TransactionInfoDto> GetTransactionByIdAsync(string txId, CancellationToken ct = default);
 
     // 交易回執（Solidity Node）
-    Task<TransactionInfo> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default);
+    Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default);
+
+    // 帳戶交易歷史（TronGrid V1 API）
+    Task<IReadOnlyList<TransactionInfoDto>> GetAccountTransactionsAsync(
+        string address, int limit = 10, CancellationToken ct = default);
 
     // 智能合約
-    Task<TransactionExtension> TriggerSmartContractAsync(
+    Task<Transaction> TriggerSmartContractAsync(
         string ownerAddress, string contractAddress,
         string functionSelector, byte[] parameter,
         long feeLimit, long callValue = 0,
@@ -380,21 +385,28 @@ public interface ITronProvider
         string ownerAddress, string contractAddress,
         string functionSelector, byte[] parameter,
         CancellationToken ct = default);
+
+    // 委託資源查詢
+    Task<DelegatedResourceIndex> GetDelegatedResourceAccountIndexAsync(
+        string address, CancellationToken ct = default);
+    Task<IReadOnlyList<DelegatedResourceInfo>> GetDelegatedResourceAsync(
+        string fromAddress, string toAddress, CancellationToken ct = default);
 }
 
-// 兩個實作
-public class TronHttpProvider : ITronProvider
+// 兩個實作，均實作 IDisposable
+public class TronHttpProvider : ITronProvider, IDisposable
 {
     public TronHttpProvider(string baseUrl, string? apiKey = null);
     public TronHttpProvider(TronNetworkConfig network, string? apiKey = null);
     // HTTP 透過同一個 base URL 自動存取 Full Node + Solidity Node
 }
 
-public class TronGrpcProvider : ITronProvider
+public class TronGrpcProvider : ITronProvider, IDisposable
 {
     public TronGrpcProvider(string fullNodeEndpoint, string? solidityEndpoint = null);
     public TronGrpcProvider(TronNetworkConfig network);
     // solidityEndpoint 為 optional，沒提供則交易查詢無法取得確認狀態
+    // 預設使用 HTTPS 連線
 }
 ```
 
@@ -404,25 +416,47 @@ public class TronGrpcProvider : ITronProvider
 public record AccountInfo(
     string Address, long Balance,
     long NetUsage, long EnergyUsage,
-    long CreateTime);
+    long CreateTime,
+    long FrozenBalanceForBandwidth = 0,   // Staking 2.0 frozen amount
+    long FrozenBalanceForEnergy = 0);
 
 public record BlockInfo(
     long BlockNumber, string BlockId,
     long Timestamp, int TransactionCount,
-    byte[] BlockHeaderRawData);
+    byte[] BlockHeaderRawData,
+    IReadOnlyList<BlockTransactionInfo>? Transactions = null);
+
+public record BlockTransactionInfo(
+    string TxId, string ContractType,
+    string OwnerAddress, string ToAddress,
+    long Amount, string? ContractAddress, byte[]? Data);
 
 public record BroadcastResult(
     bool Success, string? TxId, string? Message);
 
-public record TransactionInfo(
+public record TransactionInfoDto(
     string TxId, long BlockNumber, long BlockTimestamp,
     string ContractResult, long Fee,
-    long EnergyUsage, long NetUsage);
+    long EnergyUsage, long NetUsage,
+    long EnergyFee = 0, long NetFee = 0,             // TRX costs in Sun
+    string? ContractType = null,                       // parsed from raw_data
+    string? OwnerAddress = null, string? ToAddress = null,
+    long AmountSun = 0, string? ContractAddress = null,
+    byte[]? ContractData = null);
 
 public record AccountResourceInfo(
     long FreeBandwidthLimit, long FreeBandwidthUsed,
     long EnergyLimit, long EnergyUsed,
     long TotalBandwidthLimit, long TotalBandwidthUsed);
+
+public record DelegatedResourceIndex(
+    IReadOnlyList<string> ToAddresses,
+    IReadOnlyList<string> FromAddresses);
+
+public record DelegatedResourceInfo(
+    string From, string To,
+    long FrozenBalanceForBandwidth,
+    long FrozenBalanceForEnergy);
 ```
 
 ---
@@ -469,10 +503,29 @@ else
 
 不需要 try-catch。只有 SDK 內部 bug 才會 throw。
 
+### 輸入驗證
+
+所有接受 `decimal trxAmount` 的方法都會驗證：
+- `trxAmount <= 0` → 回傳 `Fail(InvalidAddress, "Amount must be positive")`
+- 溢位（超過 long 範圍）→ 回傳 `Fail(InvalidAddress, "Amount too large")`
+
+使用 `checked` 算術防止靜默溢位。
+
+### 數值保證
+
+- **TRX 金額**：`decimal`，單位 TRX，SDK 內部精確轉換（`decimal` 乘法無浮點誤差）
+- **Token 金額**：同時提供 `RawAmount`（永遠正確的原始值）和 `Amount?`（轉換後的值，null = 無法轉換）
+- **手續費**：`decimal` TRX，從 receipt 的 `energy_fee` + `net_fee` 解析
+- **Energy/Bandwidth**：`long`，raw 值不需轉換
+
+### 資源清理
+
+`TronClient` 和 `TronHttpProvider` 均實作 `IDisposable`。使用完畢需 dispose 以避免 socket 洩漏。
+
 ### TronClient
 
 ```csharp
-public class TronClient
+public class TronClient : IDisposable
 {
     public TronClient(ITronProvider provider);
 
@@ -569,6 +622,31 @@ public class Trc20Contract
 }
 ```
 
+### Token 資訊快取（三層解析）
+
+```csharp
+public record TokenInfo(string Symbol, int Decimals);
+
+public class TokenInfoCache
+{
+    // Layer 1: 內建已知代幣表（零延遲）
+    // USDT: 41a614f803b6fd780986a42c78ec9c7f77e6ded13c → ("USDT", 6)
+
+    // Layer 2: Memory cache（ConcurrentDictionary，零延遲）
+
+    // Layer 3: 合約呼叫 symbol() + decimals()（首次需網路，結果存 cache）
+
+    public TokenInfo? Get(string contractAddress);                    // Layer 1+2 only
+    public Task<TokenInfo> GetOrResolveAsync(                        // Layer 1+2+3
+        string contractAddress, ITronProvider provider, CancellationToken ct = default);
+    public void Set(string contractAddress, TokenInfo info);          // 手動加入 cache
+}
+```
+
+每個合約只查一次，之後永遠走 cache（symbol/decimals 不會變）。
+
+### TRC20 部署
+
 TRC20 部署：SDK 內建標準 Solidity bytecode 模板，`Trc20TokenOptions` 的 `Mintable` / `Burnable` 控制功能開關。進階使用者可用 `DeployContractAsync()` 部署自訂合約。
 
 ```csharp
@@ -654,9 +732,10 @@ public enum TransactionType
 
 public record TokenTransferInfo(
     string ContractAddress,         // 合約地址
-    string Symbol,                  // "USDT", "USDC", etc.
-    int Decimals,                   // 6 (USDT), 6 (USDC), 18 (其他)
-    decimal Amount);                // 代幣金額（已除以 decimals）
+    string Symbol,                  // "USDT", "USDC", etc.（空字串 = 未知）
+    int Decimals,                   // 6 (USDT), 18 (其他)，0 = 未知
+    decimal RawAmount,              // 永遠正確的原始鏈上值（最小單位）
+    decimal? Amount);               // 轉換後的人類可讀金額，null = decimals 未知無法轉換
 
 public record ResourceCost(
     decimal TrxBurned,              // 燃燒的 TRX（手續費）
@@ -688,9 +767,15 @@ public enum FailureReason
 ### 帳戶與資源
 
 ```csharp
+public record Trc20BalanceInfo(
+    decimal RawBalance,             // 永遠正確的原始值
+    decimal? Balance,               // 轉換後的金額，null = decimals 未知
+    string Symbol,                  // 代幣符號
+    int Decimals);                  // 代幣精度
+
 public record BalanceInfo(
     decimal TrxBalance,
-    IReadOnlyDictionary<string, decimal> Trc20Balances);  // contractAddress → balance
+    IReadOnlyDictionary<string, Trc20BalanceInfo> Trc20Balances);  // contractAddress → balance info
 
 public record AccountOverview(
     string Address,
@@ -766,7 +851,7 @@ public class PollingBlockStream : ITronBlockStream
 // 多地址監聽
 public class TronTransactionWatcher : IAsyncDisposable
 {
-    public TronTransactionWatcher(ITronBlockStream stream);
+    public TronTransactionWatcher(ITronBlockStream stream, ITronProvider? provider = null);
 
     // 動態增減監聽地址
     public void WatchAddress(string address);
@@ -788,7 +873,10 @@ public record TrxReceivedEventArgs(
 
 public record Trc20ReceivedEventArgs(
     string TxId, string FromAddress, string ToAddress,
-    string ContractAddress, string Symbol, decimal Amount,
+    string ContractAddress, string Symbol,
+    decimal RawAmount,              // 永遠正確的原始值
+    decimal? Amount,                // 轉換後金額，null = decimals 未知
+    int Decimals,                   // 代幣精度，0 = 未知
     long BlockNumber, DateTimeOffset Timestamp);
 
 public record TransactionConfirmedEventArgs(
