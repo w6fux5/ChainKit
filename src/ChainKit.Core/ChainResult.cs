@@ -2,11 +2,11 @@ namespace ChainKit.Core;
 
 public record ChainResult<T>
 {
-    public bool Success { get; private init; }
-    public T? Data { get; private init; }
-    public ChainError? Error { get; private init; }
+    public bool Success { get; protected init; }
+    public T? Data { get; protected init; }
+    public ChainError? Error { get; protected init; }
 
-    private ChainResult() { }
+    protected ChainResult() { }
 
     public static ChainResult<T> Ok(T data) => new()
     {
