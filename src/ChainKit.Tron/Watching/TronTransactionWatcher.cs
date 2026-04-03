@@ -130,7 +130,17 @@ public class TronTransactionWatcher : IAsyncDisposable
                         if (tokenInfo.Decimals > 0)
                             resolvedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
                     }
-                    catch { /* resolution failed — fire with raw values */ }
+                    catch { /* resolution failed — fall through to known-token lookup */ }
+                }
+                else if (!string.IsNullOrEmpty(trc20Info.ContractAddress))
+                {
+                    // No provider — check known tokens + memory cache (no network call)
+                    var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
+                    if (tokenInfo != null)
+                    {
+                        resolvedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                        symbol = tokenInfo.Symbol;
+                    }
                 }
 
                 OnTrc20Received?.Invoke(this, new Trc20ReceivedEventArgs(

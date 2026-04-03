@@ -32,5 +32,7 @@ public record TransactionInfoDto(
     string TxId, long BlockNumber, long BlockTimestamp, string ContractResult, long Fee, long EnergyUsage, long NetUsage,
     // Contract detail fields (populated by GetTransactionByIdAsync)
     string ContractType = "", string OwnerAddress = "", string ToAddress = "",
-    long AmountSun = 0, string? ContractAddress = null, string? ContractData = null);
+    long AmountSun = 0, string? ContractAddress = null, string? ContractData = null,
+    // Resource TRX costs in Sun (populated by GetTransactionInfoByIdAsync from receipt)
+    long EnergyFee = 0, long NetFee = 0);
 public record AccountResourceInfo(long FreeBandwidthLimit, long FreeBandwidthUsed, long EnergyLimit, long EnergyUsed, long TotalBandwidthLimit, long TotalBandwidthUsed);

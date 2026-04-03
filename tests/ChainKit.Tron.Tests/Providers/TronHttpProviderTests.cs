@@ -369,6 +369,63 @@ public class TronHttpProviderTests
         Assert.Contains("/walletsolidity/gettransactioninfobyid", handler.LastRequestUri!.ToString());
     }
 
+    [Fact]
+    public async Task GetTransactionInfoByIdAsync_ParsesEnergyFeeAndNetFee()
+    {
+        var responseJson = """
+        {
+            "id": "fee_tx",
+            "blockNumber": 50000,
+            "blockTimeStamp": 1700000000000,
+            "fee": 27603900,
+            "receipt": {
+                "energy_fee": 27255900,
+                "net_fee": 348000,
+                "energy_usage_total": 64895,
+                "net_usage": 345,
+                "result": "SUCCESS"
+            },
+            "contractResult": [""]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionInfoByIdAsync("fee_tx");
+
+        Assert.Equal("fee_tx", info.TxId);
+        Assert.Equal(27603900, info.Fee);
+        Assert.Equal(64895, info.EnergyUsage);
+        Assert.Equal(345, info.NetUsage);
+        Assert.Equal(27255900, info.EnergyFee);
+        Assert.Equal(348000, info.NetFee);
+    }
+
+    [Fact]
+    public async Task GetTransactionInfoByIdAsync_MissingReceipt_ReturnsZeroFees()
+    {
+        var responseJson = """
+        {
+            "id": "no_receipt_tx",
+            "blockNumber": 50000,
+            "blockTimeStamp": 1700000000000,
+            "fee": 0,
+            "contractResult": [""]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionInfoByIdAsync("no_receipt_tx");
+
+        Assert.Equal(0, info.EnergyFee);
+        Assert.Equal(0, info.NetFee);
+        Assert.Equal(0, info.EnergyUsage);
+        Assert.Equal(0, info.NetUsage);
+    }
+
     // --- TriggerConstantContractAsync ---
 
     [Fact]

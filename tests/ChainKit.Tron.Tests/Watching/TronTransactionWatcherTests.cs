@@ -408,9 +408,9 @@ public class TronTransactionWatcherTests
     }
 
     [Fact]
-    public async Task Trc20Received_WithoutProvider_ReturnsRawAmount()
+    public async Task Trc20Received_WithoutProvider_KnownToken_ConvertsAmount()
     {
-        // Watcher created without provider — no token resolution
+        // Watcher created without provider — known tokens (USDT) still get converted
         var contractAddr = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c";
         long tokenAmount = 20_200_000;
 
@@ -427,8 +427,33 @@ public class TronTransactionWatcherTests
         await Task.Delay(200);
 
         Assert.NotNull(received);
+        Assert.Equal("USDT", received!.Symbol);
+        // 20_200_000 / 10^6 = 20.2 — known token decimals used even without provider
+        Assert.Equal(20.2m, received.Amount);
+    }
+
+    [Fact]
+    public async Task Trc20Received_WithoutProvider_UnknownToken_ReturnsRawAmount()
+    {
+        // Watcher created without provider and unknown token — raw amount returned
+        var contractAddr = "41" + new string('e', 40);
+        long tokenAmount = 500_000_000;
+
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "raw_tx2");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream); // no provider
+
+        Trc20ReceivedEventArgs? received = null;
+        watcher.OnTrc20Received += (_, e) => received = e;
+
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
         Assert.Equal("", received!.Symbol);
-        Assert.Equal((decimal)tokenAmount, received.Amount); // raw, no conversion
+        Assert.Equal((decimal)tokenAmount, received.Amount); // raw, unknown token
     }
 
     /// <summary>

@@ -172,7 +172,8 @@ public class TronClient
                     (decimal)solidityInfo.Fee / SunPerTrx,
                     solidityInfo.NetUsage,
                     solidityInfo.EnergyUsage,
-                    0m, 0m)
+                    (decimal)solidityInfo.NetFee / SunPerTrx,
+                    (decimal)solidityInfo.EnergyFee / SunPerTrx)
                 : null;
 
             // Resolve from/to addresses (convert hex 41-prefix to base58 if present)
@@ -276,12 +277,16 @@ public class TronClient
                     var result = await Provider.TriggerConstantContractAsync(
                         hexAddress, contractHex, "balanceOf(address)", data[4..], ct);
 
-                    var balance = result.Length >= 32
+                    var rawBalance = result.Length >= 32
                         ? AbiEncoder.DecodeUint256(result)
                         : BigInteger.Zero;
 
-                    // We don't know the decimals here, store raw value as decimal
-                    trc20Balances[contract] = (decimal)balance;
+                    // Resolve decimals via three-layer cache and convert
+                    var tokenInfo = await TokenCache.GetOrResolveAsync(contractHex, Provider, ct);
+                    var convertedBalance = tokenInfo.Decimals > 0
+                        ? (decimal)rawBalance / (decimal)Math.Pow(10, tokenInfo.Decimals)
+                        : (decimal)rawBalance;
+                    trc20Balances[contract] = convertedBalance;
                 }
                 catch
                 {

@@ -152,6 +152,35 @@ public class TronClientTests
     }
 
     [Fact]
+    public async Task GetBalanceAsync_Trc20KnownToken_ConvertsByDecimals()
+    {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo("41abc", 10_000_000, 0, 0, 0)); // 10 TRX
+
+        // Return 20_200_000 raw USDT balance (6 decimals -> 20.2 USDT)
+        var rawBalance = AbiEncoder.EncodeUint256(new BigInteger(20_200_000));
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(rawBalance);
+
+        // USDT mainnet contract address (known token, 6 decimals)
+        var usdtAddr = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+        var result = await _client.GetBalanceAsync("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", usdtAddr);
+
+        Assert.True(result.Success);
+        Assert.Equal(10m, result.Data!.TrxBalance);
+        // 20_200_000 / 10^6 = 20.2
+        Assert.Equal(20.2m, result.Data.Trc20Balances[usdtAddr]);
+
+        // Provider should NOT have been called for symbol/decimals (known token)
+        await _provider.DidNotReceive().TriggerConstantContractAsync(
+            Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Is<string>(s => s == "symbol()" || s == "decimals()"),
+            Arg.Any<byte[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetBalanceAsync_Trc20QueryFails_ReportsZero()
     {
         _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -213,6 +242,33 @@ public class TronClientTests
         Assert.Equal(TransactionStatus.Confirmed, result.Data.Status);
         Assert.Equal(100, result.Data.BlockNumber);
         Assert.NotNull(result.Data.Cost);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_ResourceCost_ParsesEnergyAndBandwidthTrxCosts()
+    {
+        var txId = "resource_cost_tx";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 0, 0, 0,
+                ContractType: "TriggerSmartContract",
+                OwnerAddress: "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
+
+        // energy_fee = 27_255_900 sun, net_fee = 348_000 sun
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS",
+                Fee: 27_603_900, EnergyUsage: 64_895, NetUsage: 345,
+                EnergyFee: 27_255_900, NetFee: 348_000));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        var cost = result.Data!.Cost!;
+        Assert.Equal(27_603_900m / 1_000_000m, cost.TrxBurned);
+        Assert.Equal(64_895, cost.EnergyUsed);
+        Assert.Equal(345, cost.BandwidthUsed);
+        Assert.Equal(27_255_900m / 1_000_000m, cost.EnergyTrxCost);
+        Assert.Equal(348_000m / 1_000_000m, cost.BandwidthTrxCost);
     }
 
     [Fact]

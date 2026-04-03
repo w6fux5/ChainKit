@@ -617,13 +617,19 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         var blockTs = ParseVarintField(data, 4);
 
         // ResourceReceipt at field 8
+        // Fields: 1=energy_usage, 2=energy_fee, 3=origin_energy_usage,
+        //   4=energy_usage_total (net_usage), 5=net_usage, 6=net_fee
         var receiptBytes = ParseBytesField(data, 8);
         long energyUsage = 0;
         long netUsage = 0;
+        long energyFee = 0;
+        long netFee = 0;
         if (receiptBytes.Length > 0)
         {
             energyUsage = ParseVarintField(receiptBytes, 1);
             netUsage = ParseVarintField(receiptBytes, 4);
+            energyFee = ParseVarintField(receiptBytes, 2);
+            netFee = ParseVarintField(receiptBytes, 6);
         }
 
         var contractResults = ParseRepeatedBytesField(data, 9);
@@ -631,7 +637,8 @@ public class TronGrpcProvider : ITronProvider, IDisposable
             ? Convert.ToHexString(contractResults[0]).ToLowerInvariant()
             : "";
 
-        return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energyUsage, netUsage);
+        return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energyUsage, netUsage,
+            EnergyFee: energyFee, NetFee: netFee);
     }
 
     private static Transaction ParseTransactionFromExtention(byte[] data, long feeLimit)

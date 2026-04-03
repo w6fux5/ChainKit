@@ -420,15 +420,20 @@ public class TronHttpProvider : ITronProvider
         var blockNum = root.TryGetProperty("blockNumber", out var bnEl) ? bnEl.GetInt64() : 0;
         var blockTs = root.TryGetProperty("blockTimeStamp", out var btsEl) ? btsEl.GetInt64() : 0;
         var fee = root.TryGetProperty("fee", out var feeEl) ? feeEl.GetInt64() : 0;
-        var energy = root.TryGetProperty("receipt", out var rcEl)
-            && rcEl.TryGetProperty("energy_usage_total", out var euEl) ? euEl.GetInt64() : 0;
-        var net = root.TryGetProperty("receipt", out var rc2El)
-            && rc2El.TryGetProperty("net_usage", out var nuEl) ? nuEl.GetInt64() : 0;
+        long energy = 0, net = 0, energyFee = 0, netFee = 0;
+        if (root.TryGetProperty("receipt", out var rcEl))
+        {
+            energy = rcEl.TryGetProperty("energy_usage_total", out var euEl) ? euEl.GetInt64() : 0;
+            net = rcEl.TryGetProperty("net_usage", out var nuEl) ? nuEl.GetInt64() : 0;
+            energyFee = rcEl.TryGetProperty("energy_fee", out var efEl) ? efEl.GetInt64() : 0;
+            netFee = rcEl.TryGetProperty("net_fee", out var nfEl) ? nfEl.GetInt64() : 0;
+        }
         var contractResult = root.TryGetProperty("contractResult", out var crEl)
             && crEl.GetArrayLength() > 0
                 ? crEl[0].GetString() ?? "" : "";
 
-        return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energy, net);
+        return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energy, net,
+            EnergyFee: energyFee, NetFee: netFee);
     }
 
     private static bool IsHexString(string s) =>
