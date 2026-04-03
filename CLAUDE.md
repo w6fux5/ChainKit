@@ -44,6 +44,16 @@
 - 新增功能必須有對應測試
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
+## Tron 開發注意事項
+
+- Broadcast 交易用 `/wallet/broadcasthex`（hex encoded protobuf），不要用 `/wallet/broadcasttransaction`（JSON 格式會被 Tron 節點的 fastjson 拒絕）
+- TAPOS ref block hash 取 block ID 的 bytes 8-15（不是 0-7）
+- TriggerSmartContract 回傳的交易直接用 `raw_data_hex` 解析，不要 JSON→protobuf→重新序列化（位元組會不一致導致 SIGERROR）
+- Protobuf proto 檔案放在 `Protocol/Protobuf/` 扁平目錄，.csproj 用 `ProtoRoot="Protocol\Protobuf"`
+- Solidity 編譯：`npm install -g solc` → `solcjs --bin --abi --optimize`
+- E2E 測試帳戶 bandwidth 會耗盡，測試需要有 graceful degradation（檢測 BANDWITH_ERROR）
+- .NET 內建 SHA3_256 是 NIST SHA3（padding 0x06），不是 Tron/Ethereum 的 Keccak-256（padding 0x01），不能混用
+
 ## 關鍵設計決策
 
 - 單套件 per 鏈（內部使用，不拆多套件）
