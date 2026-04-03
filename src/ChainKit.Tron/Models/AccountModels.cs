@@ -10,7 +10,14 @@ public record AccountOverview(
 
 // Low-level DTOs (used by ITronProvider)
 public record AccountInfo(string Address, long Balance, long NetUsage, long EnergyUsage, long CreateTime);
-public record BlockInfo(long BlockNumber, string BlockId, long Timestamp, int TransactionCount, byte[] BlockHeaderRawData);
+public record BlockInfo(
+    long BlockNumber, string BlockId, long Timestamp, int TransactionCount, byte[] BlockHeaderRawData,
+    IReadOnlyList<BlockTransactionInfo>? Transactions = null);
+
+public record BlockTransactionInfo(
+    string TxId, string ContractType,
+    string OwnerAddress, string ToAddress,
+    long Amount, string? ContractAddress, byte[]? Data);
 public record BroadcastResult(bool Success, string? TxId, string? Message);
 public record TransactionInfoDto(
     string TxId, long BlockNumber, long BlockTimestamp, string ContractResult, long Fee, long EnergyUsage, long NetUsage,

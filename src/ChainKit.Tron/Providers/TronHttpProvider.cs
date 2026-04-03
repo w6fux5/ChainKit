@@ -273,10 +273,72 @@ public class TronHttpProvider : ITronProvider
         if (root.TryGetProperty("blockID", out var idEl))
             blockId = idEl.GetString() ?? "";
 
+        List<BlockTransactionInfo>? transactions = null;
         if (root.TryGetProperty("transactions", out var txsEl))
+        {
             txCount = txsEl.GetArrayLength();
+            transactions = new List<BlockTransactionInfo>(txCount);
+            foreach (var txEl in txsEl.EnumerateArray())
+            {
+                var txInfo = ParseBlockTransaction(txEl);
+                if (txInfo != null)
+                    transactions.Add(txInfo);
+            }
+        }
 
-        return new BlockInfo(blockNumber, blockId, timestamp, txCount, rawData);
+        return new BlockInfo(blockNumber, blockId, timestamp, txCount, rawData, transactions);
+    }
+
+    private static BlockTransactionInfo? ParseBlockTransaction(JsonElement txEl)
+    {
+        var txId = txEl.TryGetProperty("txID", out var txIdEl) ? txIdEl.GetString() ?? "" : "";
+
+        string contractType = "";
+        string ownerAddress = "";
+        string toAddress = "";
+        long amount = 0;
+        string? contractAddress = null;
+        byte[]? data = null;
+
+        if (txEl.TryGetProperty("raw_data", out var rawDataEl)
+            && rawDataEl.TryGetProperty("contract", out var contractsEl)
+            && contractsEl.GetArrayLength() > 0)
+        {
+            var contract = contractsEl[0];
+            contractType = contract.TryGetProperty("type", out var typeEl)
+                ? typeEl.GetString() ?? "" : "";
+
+            if (contract.TryGetProperty("parameter", out var paramEl)
+                && paramEl.TryGetProperty("value", out var valueEl))
+            {
+                ownerAddress = valueEl.TryGetProperty("owner_address", out var ownerEl)
+                    ? ownerEl.GetString() ?? "" : "";
+                toAddress = valueEl.TryGetProperty("to_address", out var toEl)
+                    ? toEl.GetString() ?? "" : "";
+                amount = valueEl.TryGetProperty("amount", out var amtEl)
+                    ? amtEl.GetInt64() : 0;
+                contractAddress = valueEl.TryGetProperty("contract_address", out var caEl)
+                    ? caEl.GetString() : null;
+                if (valueEl.TryGetProperty("data", out var dataEl))
+                {
+                    var dataHex = dataEl.GetString();
+                    if (dataHex != null)
+                    {
+                        try { data = Convert.FromHexString(dataHex); }
+                        catch { /* not valid hex, ignore */ }
+                    }
+                }
+
+                // For TriggerSmartContract, also check call_value
+                if (contractType == "TriggerSmartContract" && amount == 0
+                    && valueEl.TryGetProperty("call_value", out var cvEl))
+                {
+                    amount = cvEl.GetInt64();
+                }
+            }
+        }
+
+        return new BlockTransactionInfo(txId, contractType, ownerAddress, toAddress, amount, contractAddress, data);
     }
 
     private static TransactionInfoDto ParseTransactionInfoFromTx(string json, string txId)

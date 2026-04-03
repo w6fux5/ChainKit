@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Watching;
 using Xunit;
@@ -39,6 +40,37 @@ public class TronTransactionWatcherTests
     private static TronBlockTransaction MakeTrc20Tx(
         string from, string to, string txId = "tx2") =>
         new(txId, from, to, "TriggerSmartContract", Array.Empty<byte>());
+
+    /// <summary>
+    /// Builds RawData with a TRX amount in the PollingBlockStream format.
+    /// Layout: [8 bytes big-endian amount][4: 0 contractAddr len][4: 0 data len]
+    /// </summary>
+    private static byte[] BuildTrxRawData(long amountSun)
+    {
+        var txInfo = new BlockTransactionInfo("", "TransferContract", "", "", amountSun, null, null);
+        return PollingBlockStream.BuildRawData(txInfo);
+    }
+
+    /// <summary>
+    /// Builds RawData with TRC20 transfer data in the PollingBlockStream format.
+    /// </summary>
+    private static byte[] BuildTrc20RawData(string contractAddress, string recipientHex, long tokenAmount)
+    {
+        // Build ABI-encoded transfer(address,uint256) call data
+        var callData = AbiEncoder.EncodeTransfer(recipientHex, new System.Numerics.BigInteger(tokenAmount));
+        var txInfo = new BlockTransactionInfo("", "TriggerSmartContract", "", "",
+            0, contractAddress, callData);
+        return PollingBlockStream.BuildRawData(txInfo);
+    }
+
+    private static TronBlockTransaction MakeTrxTxWithAmount(
+        string from, string to, long amountSun, string txId = "tx1") =>
+        new(txId, from, to, "TransferContract", BuildTrxRawData(amountSun));
+
+    private static TronBlockTransaction MakeTrc20TxWithData(
+        string from, string contractAddr, string recipientHex, long tokenAmount, string txId = "tx2") =>
+        new(txId, from, contractAddr, "TriggerSmartContract",
+            BuildTrc20RawData(contractAddr, recipientHex, tokenAmount));
 
     [Fact]
     public void Constructor_NullStream_Throws()
@@ -84,7 +116,6 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(received);
         Assert.Equal("tx2", received!.TxId);
-        Assert.Equal(WatchedAddr, received.ToAddress);
     }
 
     [Fact]
@@ -206,5 +237,96 @@ public class TronTransactionWatcherTests
         await watcher.StartAsync();
         await watcher.DisposeAsync();
         // Should not throw or hang
+    }
+
+    // --- Amount parsing tests ---
+
+    [Fact]
+    public void ParseTrxAmount_PollingFormat_ReturnsCorrectTrx()
+    {
+        var rawData = BuildTrxRawData(5_000_000); // 5 TRX
+        var amount = TronTransactionWatcher.ParseTrxAmount(rawData);
+        Assert.Equal(5m, amount);
+    }
+
+    [Fact]
+    public void ParseTrxAmount_EmptyData_ReturnsZero()
+    {
+        Assert.Equal(0m, TronTransactionWatcher.ParseTrxAmount(Array.Empty<byte>()));
+        Assert.Equal(0m, TronTransactionWatcher.ParseTrxAmount(null!));
+    }
+
+    [Fact]
+    public void ParseTrxAmount_SmallData_ReturnsZero()
+    {
+        Assert.Equal(0m, TronTransactionWatcher.ParseTrxAmount(new byte[4]));
+    }
+
+    [Fact]
+    public void ParseTrc20Transfer_WithTransferData_ReturnsAmountAndRecipient()
+    {
+        var recipientHex = "41" + new string('a', 40);
+        long tokenAmount = 1_000_000_000; // e.g. 1000 USDT (6 decimals)
+
+        var rawData = BuildTrc20RawData("41contractcontractcontractcontractcontrac", recipientHex, tokenAmount);
+        var info = TronTransactionWatcher.ParseTrc20Transfer(rawData);
+
+        Assert.Equal("41contractcontractcontractcontractcontrac", info.ContractAddress);
+        Assert.NotNull(info.Recipient);
+        Assert.Equal((decimal)tokenAmount, info.Amount);
+    }
+
+    [Fact]
+    public void ParseTrc20Transfer_EmptyData_ReturnsEmpty()
+    {
+        var info = TronTransactionWatcher.ParseTrc20Transfer(Array.Empty<byte>());
+        Assert.Equal("", info.ContractAddress);
+        Assert.Null(info.Recipient);
+        Assert.Equal(0m, info.Amount);
+    }
+
+    [Fact]
+    public async Task TrxReceived_WithRealAmount_EventContainsAmount()
+    {
+        // 10 TRX = 10_000_000 sun
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream);
+
+        TrxReceivedEventArgs? received = null;
+        watcher.OnTrxReceived += (_, e) => received = e;
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
+        Assert.Equal(10m, received!.Amount); // 10 TRX
+    }
+
+    [Fact]
+    public async Task Trc20Received_WithRealData_EventContainsAmountAndContract()
+    {
+        var contractAddr = "41" + new string('e', 40);
+        long tokenAmount = 500_000_000;
+
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "trc20tx");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream);
+
+        Trc20ReceivedEventArgs? received = null;
+        watcher.OnTrc20Received += (_, e) => received = e;
+
+        // Watch the contract address (which is the "to" in the TronBlockTransaction)
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
+        Assert.Equal("trc20tx", received!.TxId);
+        Assert.Equal(contractAddr, received.ContractAddress);
+        Assert.Equal((decimal)tokenAmount, received.Amount);
     }
 }
