@@ -370,12 +370,11 @@ public class TronGrpcProvider : ITronProvider, IDisposable
 
     private static GrpcChannel CreateChannel(string endpoint)
     {
-        // Ensure the endpoint has a scheme; default to http for gRPC
-        var uri = endpoint.Contains("://")
-            ? endpoint
-            : $"http://{endpoint}";
+        // Ensure the endpoint has a scheme; default to https for gRPC
+        if (!endpoint.StartsWith("http://") && !endpoint.StartsWith("https://"))
+            endpoint = "https://" + endpoint;
 
-        return GrpcChannel.ForAddress(uri);
+        return GrpcChannel.ForAddress(endpoint);
     }
 
     private Task<byte[]> CallFullNodeAsync(Method<byte[], byte[]> method, byte[] request, CancellationToken ct)

@@ -710,6 +710,36 @@ public class TronHttpProviderTests
         Assert.NotNull(provider);
     }
 
+    // --- IDisposable tests ---
+
+    [Fact]
+    public async Task Dispose_OwnedHttpClient_DisposesIt()
+    {
+        // Public constructor creates its own HttpClient (owns it)
+        var provider = new TronHttpProvider("https://api.trongrid.io");
+        provider.Dispose();
+
+        // After dispose, using the provider should throw because HttpClient is disposed.
+        // We verify by attempting to make a request.
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.GetAccountAsync("41a1b2c3d4e5f60000000000000000000000000001"));
+    }
+
+    [Fact]
+    public async Task Dispose_InjectedHttpClient_DoesNotDisposeIt()
+    {
+        // Internal constructor accepts an injected HttpClient (does not own it)
+        var handler = MockJson("{}");
+        var httpClient = new HttpClient(handler);
+        var provider = new TronHttpProvider(httpClient, "https://api.trongrid.io");
+
+        provider.Dispose();
+
+        // The injected HttpClient should still be usable after the provider is disposed
+        var response = await httpClient.GetAsync("https://api.trongrid.io/wallet/getnowblock");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     // --- Mock HTTP handler ---
 
     private sealed class MockHandler : HttpMessageHandler

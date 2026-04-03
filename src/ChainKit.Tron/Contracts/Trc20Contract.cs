@@ -22,6 +22,7 @@ public class Trc20Contract
     private readonly ITronProvider _provider;
     private readonly TronAccount _ownerAccount;
     private readonly string _contractHex;
+    private readonly SemaphoreSlim _decimalsLock = new(1, 1);
     private byte? _cachedDecimals;
 
     public Trc20Contract(ITronProvider provider, string contractAddress, TronAccount ownerAccount)
@@ -261,10 +262,21 @@ public class Trc20Contract
         if (_cachedDecimals.HasValue)
             return _cachedDecimals.Value;
 
-        var result = await CallConstantAsync("decimals()", Array.Empty<byte>(), ct);
-        var raw = AbiEncoder.DecodeUint256(result);
-        _cachedDecimals = (byte)raw;
-        return _cachedDecimals.Value;
+        await _decimalsLock.WaitAsync(ct);
+        try
+        {
+            if (_cachedDecimals.HasValue)
+                return _cachedDecimals.Value;
+
+            var result = await CallConstantAsync("decimals()", Array.Empty<byte>(), ct);
+            var raw = AbiEncoder.DecodeUint256(result);
+            _cachedDecimals = (byte)raw;
+            return _cachedDecimals.Value;
+        }
+        finally
+        {
+            _decimalsLock.Release();
+        }
     }
 
     private static decimal ToDecimalAmount(BigInteger rawValue, byte decimals)

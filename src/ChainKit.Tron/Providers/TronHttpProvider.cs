@@ -7,10 +7,11 @@ using Google.Protobuf;
 
 namespace ChainKit.Tron.Providers;
 
-public class TronHttpProvider : ITronProvider
+public class TronHttpProvider : ITronProvider, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
+    private readonly bool _ownsHttpClient;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,6 +24,7 @@ public class TronHttpProvider : ITronProvider
     {
         _baseUrl = baseUrl.TrimEnd('/');
         _httpClient = new HttpClient();
+        _ownsHttpClient = true;
         if (apiKey != null)
             _httpClient.DefaultRequestHeaders.Add("TRON-PRO-API-KEY", apiKey);
     }
@@ -34,6 +36,7 @@ public class TronHttpProvider : ITronProvider
     {
         _httpClient = httpClient;
         _baseUrl = baseUrl.TrimEnd('/');
+        _ownsHttpClient = false;
     }
 
     // --- ITronProvider implementation ---
@@ -584,5 +587,14 @@ public class TronHttpProvider : ITronProvider
         {
             return hex;
         }
+    }
+
+    // --- IDisposable ---
+
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

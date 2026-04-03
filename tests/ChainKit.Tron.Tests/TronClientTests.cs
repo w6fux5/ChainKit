@@ -95,6 +95,95 @@ public class TronClientTests
     }
 
     [Fact]
+    public async Task TransferTrxAsync_NegativeAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.TransferTrxAsync(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", -5m);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount must be positive", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task TransferTrxAsync_ZeroAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.TransferTrxAsync(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 0m);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount must be positive", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task TransferTrxAsync_OverflowAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        // decimal.MaxValue will overflow when multiplied by 1_000_000 and cast to long
+        var result = await _client.TransferTrxAsync(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", decimal.MaxValue);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount too large", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task StakeTrxAsync_NegativeAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.StakeTrxAsync(account, -1m, ResourceType.Bandwidth);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount must be positive", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task UnstakeTrxAsync_NegativeAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.UnstakeTrxAsync(account, -1m, ResourceType.Energy);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount must be positive", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task DelegateResourceAsync_NegativeAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.DelegateResourceAsync(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", -1m, ResourceType.Bandwidth);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount must be positive", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task UndelegateResourceAsync_NegativeAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.UndelegateResourceAsync(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", -1m, ResourceType.Energy);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount must be positive", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task StakeTrxAsync_OverflowAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.StakeTrxAsync(account, decimal.MaxValue, ResourceType.Energy);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount too large", result.Error!.Message);
+    }
+
+    [Fact]
     public async Task TransferTrxAsync_BroadcastWithNullTxId_UsesComputedTxId()
     {
         var account = TronAccount.FromPrivateKey(TestPrivateKey);
@@ -1130,6 +1219,68 @@ public class TronClientTests
         Assert.Equal(2, energyDelegations.Count);
         Assert.Contains(energyDelegations, d => d.Amount == 3m);
         Assert.Contains(energyDelegations, d => d.Amount == 7m);
+    }
+
+    // === IDisposable ===
+
+    [Fact]
+    public void Dispose_DisposesDisposableProvider()
+    {
+        var disposableProvider = Substitute.For<ITronProvider, IDisposable>();
+        var client = new TronClient(disposableProvider);
+
+        client.Dispose();
+
+        ((IDisposable)disposableProvider).Received(1).Dispose();
+    }
+
+    [Fact]
+    public void Dispose_NonDisposableProvider_DoesNotThrow()
+    {
+        // ITronProvider alone is not IDisposable; Dispose should still succeed
+        var provider = Substitute.For<ITronProvider>();
+        var client = new TronClient(provider);
+
+        var ex = Record.Exception(() => client.Dispose());
+
+        Assert.Null(ex);
+    }
+
+    // === Overflow validation for remaining methods ===
+
+    [Fact]
+    public async Task UnstakeTrxAsync_OverflowAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.UnstakeTrxAsync(account, decimal.MaxValue, ResourceType.Bandwidth);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount too large", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task DelegateResourceAsync_OverflowAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.DelegateResourceAsync(
+            account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", decimal.MaxValue, ResourceType.Energy);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount too large", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task UndelegateResourceAsync_OverflowAmount_ReturnsFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        var result = await _client.UndelegateResourceAsync(
+            account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", decimal.MaxValue, ResourceType.Bandwidth);
+
+        Assert.False(result.Success);
+        Assert.Contains("Amount too large", result.Error!.Message);
     }
 
     // === Helpers ===
