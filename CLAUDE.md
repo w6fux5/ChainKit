@@ -26,10 +26,16 @@
 
 ## 指令
 
+- 環境需求：.NET 10 SDK、npm（Solidity 編譯用）
 - Build: `dotnet build`
 - Unit tests: `dotnet test --filter "Category!=Integration"`
 - E2E tests: `dotnet test --filter "Category=Integration"`
 - All tests: `dotnet test`
+
+### E2E 測試環境變數（可選，有預設值）
+
+- `TRON_TEST_PRIVATE_KEY_1` — Nile 測試帳戶1 私鑰
+- `TRON_TEST_PRIVATE_KEY_2` — Nile 測試帳戶2 私鑰
 
 ## 慣例
 
