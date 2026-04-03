@@ -13,7 +13,7 @@ namespace ChainKit.Tron.Contracts;
 /// write operations (via triggerSmartContract + sign + broadcast).
 /// Token decimals are fetched lazily and cached for amount conversion.
 /// </summary>
-public class Trc20Contract
+public class Trc20Contract : IDisposable
 {
     private const long DefaultFeeLimit = 100_000_000; // 100 TRX
 
@@ -305,5 +305,10 @@ public class Trc20Contract
         Buffer.BlockCopy(a, 0, result, 0, a.Length);
         Buffer.BlockCopy(b, 0, result, a.Length, b.Length);
         return result;
+    }
+
+    public void Dispose()
+    {
+        _decimalsLock.Dispose();
     }
 }

@@ -83,11 +83,18 @@ public class TronClient : IDisposable
         TronAccount from, string contractAddress,
         string toAddress, decimal amount, int decimals, CancellationToken ct = default)
     {
+        if (amount <= 0)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+        if (decimals < 0 || decimals > 77)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Invalid decimals value");
+
         try
         {
             var toHex = ResolveHexAddress(toAddress);
             var contractHex = ResolveHexAddress(contractAddress);
-            var rawAmount = new BigInteger(amount * (decimal)Math.Pow(10, decimals));
+            BigInteger rawAmount;
+            try { rawAmount = new BigInteger(amount * (decimal)Math.Pow(10, decimals)); }
+            catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
             var data = AbiEncoder.EncodeTransfer(toHex, rawAmount);
 
             var block = await Provider.GetNowBlockAsync(ct);
