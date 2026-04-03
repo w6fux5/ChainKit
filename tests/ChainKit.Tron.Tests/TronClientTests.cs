@@ -885,6 +885,253 @@ public class TronClientTests
         Assert.Equal("41a614f803b6fd780986a42c78ec9c7f77e6ded13c", contract.ContractAddress);
     }
 
+    // === GetAccountOverviewAsync ===
+
+    [Fact]
+    public async Task GetAccountOverviewAsync_Success_ReturnsCompleteOverview()
+    {
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var toHex = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo(ownerHex, 50_000_000, 0, 0, 0)); // 50 TRX
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(
+                FreeBandwidthLimit: 5000, FreeBandwidthUsed: 1000,
+                EnergyLimit: 100000, EnergyUsed: 30000,
+                TotalBandwidthLimit: 10000, TotalBandwidthUsed: 2000));
+
+        _provider.GetAccountTransactionsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<TransactionInfoDto>
+            {
+                new TransactionInfoDto("tx1", 100, 1700000000000, "SUCCESS", 0, 0, 0,
+                    ContractType: "TransferContract",
+                    OwnerAddress: ownerHex,
+                    ToAddress: toHex,
+                    AmountSun: 5_000_000),
+                new TransactionInfoDto("tx2", 101, 1700000001000, "SUCCESS", 0, 0, 0,
+                    ContractType: "TriggerSmartContract",
+                    OwnerAddress: ownerHex,
+                    ContractAddress: toHex,
+                    ContractData: "a9059cbb0000000000000000000000000000000000000000000000000000000000000001")
+            });
+
+        var result = await _client.GetAccountOverviewAsync("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+
+        Assert.True(result.Success);
+        var overview = result.Data!;
+        Assert.Equal(50m, overview.TrxBalance);
+        Assert.Equal(15000, overview.Bandwidth);     // 5000 + 10000
+        Assert.Equal(3000, overview.BandwidthUsed);   // 1000 + 2000
+        Assert.Equal(100000, overview.Energy);
+        Assert.Equal(30000, overview.EnergyUsed);
+        Assert.Equal(2, overview.RecentTransactions.Count);
+        Assert.Equal("tx1", overview.RecentTransactions[0].TxId);
+        Assert.Equal(TransactionType.NativeTransfer, overview.RecentTransactions[0].Type);
+        Assert.Equal(5m, overview.RecentTransactions[0].Amount);
+        Assert.Equal(TransactionStatus.Confirmed, overview.RecentTransactions[0].Status);
+        Assert.Equal("tx2", overview.RecentTransactions[1].TxId);
+        Assert.Equal(TransactionType.Trc20Transfer, overview.RecentTransactions[1].Type);
+    }
+
+    [Fact]
+    public async Task GetAccountOverviewAsync_EmptyTransactions_ReturnsEmptyList()
+    {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo("41abc", 10_000_000, 0, 0, 0));
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(600, 0, 0, 0, 0, 0));
+
+        _provider.GetAccountTransactionsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<TransactionInfoDto>());
+
+        var result = await _client.GetAccountOverviewAsync("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+
+        Assert.True(result.Success);
+        Assert.Equal(10m, result.Data!.TrxBalance);
+        Assert.Empty(result.Data.RecentTransactions);
+    }
+
+    [Fact]
+    public async Task GetAccountOverviewAsync_ProviderThrows_ReturnsFailResult()
+    {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("timeout"));
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("timeout"));
+        _provider.GetAccountTransactionsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("timeout"));
+
+        var result = await _client.GetAccountOverviewAsync("someaddr");
+
+        Assert.False(result.Success);
+        Assert.Contains("timeout", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task GetAccountOverviewAsync_AddressFormatsToBase58()
+    {
+        var hexAddr = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo(hexAddr, 1_000_000, 0, 0, 0));
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(600, 0, 0, 0, 0, 0));
+
+        _provider.GetAccountTransactionsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<TransactionInfoDto>());
+
+        var result = await _client.GetAccountOverviewAsync(hexAddr);
+
+        Assert.True(result.Success);
+        // The overview address should be formatted to base58
+        Assert.StartsWith("T", result.Data!.Address);
+    }
+
+    // === GetResourceInfoAsync with Delegations ===
+
+    [Fact]
+    public async Task GetResourceInfoAsync_WithDelegations_ReturnsDelegationInfo()
+    {
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var delegateeHex = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+        var delegatorHex = "41c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo(ownerHex, 50_000_000, 0, 0, 0,
+                FrozenBalanceForBandwidth: 10_000_000,
+                FrozenBalanceForEnergy: 25_000_000));
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(5000, 1000, 100000, 50000, 10000, 2000));
+
+        _provider.GetDelegatedResourceAccountIndexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DelegatedResourceIndex(
+                ToAddresses: new[] { delegateeHex },
+                FromAddresses: new[] { delegatorHex }));
+
+        // Delegation OUT: owner delegated 5 TRX bandwidth to delegatee
+        _provider.GetDelegatedResourceAsync(
+                Arg.Any<string>(), Arg.Is(delegateeHex), Arg.Any<CancellationToken>())
+            .Returns(new List<DelegatedResourceInfo>
+            {
+                new DelegatedResourceInfo(ownerHex, delegateeHex, 5_000_000, 0)
+            });
+
+        // Delegation IN: delegator delegated 3 TRX energy to owner
+        _provider.GetDelegatedResourceAsync(
+                Arg.Is(delegatorHex), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new List<DelegatedResourceInfo>
+            {
+                new DelegatedResourceInfo(delegatorHex, ownerHex, 0, 3_000_000)
+            });
+
+        var result = await _client.GetResourceInfoAsync(ownerHex);
+
+        Assert.True(result.Success);
+        var info = result.Data!;
+
+        // Basic resource info still works
+        Assert.Equal(15000, info.BandwidthTotal);
+        Assert.Equal(100000, info.EnergyTotal);
+        Assert.Equal(10m, info.StakedForBandwidth);
+        Assert.Equal(25m, info.StakedForEnergy);
+
+        // Delegations OUT
+        Assert.Single(info.DelegationsOut);
+        Assert.Equal(5m, info.DelegationsOut[0].Amount);
+        Assert.Equal(ResourceType.Bandwidth, info.DelegationsOut[0].Resource);
+        Assert.StartsWith("T", info.DelegationsOut[0].Address);
+
+        // Delegations IN
+        Assert.Single(info.DelegationsIn);
+        Assert.Equal(3m, info.DelegationsIn[0].Amount);
+        Assert.Equal(ResourceType.Energy, info.DelegationsIn[0].Resource);
+        Assert.StartsWith("T", info.DelegationsIn[0].Address);
+    }
+
+    [Fact]
+    public async Task GetResourceInfoAsync_DelegationQueryFails_StillReturnsResourceInfo()
+    {
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo("41abc", 50_000_000, 0, 0, 0,
+                FrozenBalanceForBandwidth: 10_000_000,
+                FrozenBalanceForEnergy: 25_000_000));
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(5000, 1000, 100000, 50000, 10000, 2000));
+
+        // Delegation index query fails
+        _provider.GetDelegatedResourceAccountIndexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("endpoint not available"));
+
+        var result = await _client.GetResourceInfoAsync("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+
+        Assert.True(result.Success);
+        var info = result.Data!;
+        Assert.Equal(15000, info.BandwidthTotal);
+        Assert.Equal(100000, info.EnergyTotal);
+        Assert.Equal(10m, info.StakedForBandwidth);
+        Assert.Equal(25m, info.StakedForEnergy);
+        // Delegations should be empty but not cause failure
+        Assert.Empty(info.DelegationsOut);
+        Assert.Empty(info.DelegationsIn);
+    }
+
+    [Fact]
+    public async Task GetResourceInfoAsync_MultipleDelegations_AggregatesCorrectly()
+    {
+        var ownerHex = "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+        var addr1 = "41b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3";
+        var addr2 = "41c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+
+        _provider.GetAccountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountInfo(ownerHex, 1_000_000, 0, 0, 0));
+
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(600, 0, 0, 0, 0, 0));
+
+        _provider.GetDelegatedResourceAccountIndexAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DelegatedResourceIndex(
+                ToAddresses: new[] { addr1, addr2 },
+                FromAddresses: Array.Empty<string>()));
+
+        // Delegations to addr1: both bandwidth and energy
+        _provider.GetDelegatedResourceAsync(
+                Arg.Any<string>(), Arg.Is(addr1), Arg.Any<CancellationToken>())
+            .Returns(new List<DelegatedResourceInfo>
+            {
+                new DelegatedResourceInfo(ownerHex, addr1, 2_000_000, 3_000_000)
+            });
+
+        // Delegations to addr2: energy only
+        _provider.GetDelegatedResourceAsync(
+                Arg.Any<string>(), Arg.Is(addr2), Arg.Any<CancellationToken>())
+            .Returns(new List<DelegatedResourceInfo>
+            {
+                new DelegatedResourceInfo(ownerHex, addr2, 0, 7_000_000)
+            });
+
+        var result = await _client.GetResourceInfoAsync(ownerHex);
+
+        Assert.True(result.Success);
+        // addr1 produces 2 entries (bandwidth + energy), addr2 produces 1 entry (energy)
+        Assert.Equal(3, result.Data!.DelegationsOut.Count);
+        Assert.Empty(result.Data.DelegationsIn);
+
+        // Check specific entries
+        var bwDelegation = result.Data.DelegationsOut.First(d => d.Resource == ResourceType.Bandwidth);
+        Assert.Equal(2m, bwDelegation.Amount);
+
+        var energyDelegations = result.Data.DelegationsOut.Where(d => d.Resource == ResourceType.Energy).ToList();
+        Assert.Equal(2, energyDelegations.Count);
+        Assert.Contains(energyDelegations, d => d.Amount == 3m);
+        Assert.Contains(energyDelegations, d => d.Amount == 7m);
+    }
+
     // === Helpers ===
 
     /// <summary>

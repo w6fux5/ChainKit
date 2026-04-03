@@ -26,4 +26,14 @@ public interface ITronProvider
         string ownerAddress, string contractAddress,
         string functionSelector, byte[] parameter,
         CancellationToken ct = default);
+
+    // Account transactions (TronGrid v1 API)
+    Task<IReadOnlyList<TransactionInfoDto>> GetAccountTransactionsAsync(
+        string address, int limit = 10, CancellationToken ct = default);
+
+    // Delegation resource queries (Stake 2.0)
+    Task<DelegatedResourceIndex> GetDelegatedResourceAccountIndexAsync(
+        string address, CancellationToken ct = default);
+    Task<IReadOnlyList<DelegatedResourceInfo>> GetDelegatedResourceAsync(
+        string fromAddress, string toAddress, CancellationToken ct = default);
 }

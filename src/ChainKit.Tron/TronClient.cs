@@ -308,6 +308,89 @@ public class TronClient
         }
     }
 
+    /// <summary>
+    /// Gets a complete account overview: TRX balance, resource usage, and recent transactions.
+    /// </summary>
+    public async Task<TronResult<AccountOverview>> GetAccountOverviewAsync(
+        string address, CancellationToken ct = default)
+    {
+        try
+        {
+            var hexAddress = ResolveHexAddress(address);
+
+            // Fetch account, resources, and recent transactions in parallel
+            var accountTask = Provider.GetAccountAsync(hexAddress, ct);
+            var resourceTask = Provider.GetAccountResourceAsync(hexAddress, ct);
+            var txTask = Provider.GetAccountTransactionsAsync(hexAddress, 10, ct);
+            await Task.WhenAll(accountTask, resourceTask, txTask);
+
+            var accountInfo = accountTask.Result;
+            var resourceInfo = resourceTask.Result;
+            var recentTxDtos = txTask.Result;
+
+            var trxBalance = (decimal)accountInfo.Balance / SunPerTrx;
+            var bandwidthTotal = resourceInfo.FreeBandwidthLimit + resourceInfo.TotalBandwidthLimit;
+            var bandwidthUsed = resourceInfo.FreeBandwidthUsed + resourceInfo.TotalBandwidthUsed;
+
+            // Build simplified TronTransactionDetail for each recent transaction
+            var recentTransactions = new List<TronTransactionDetail>();
+            foreach (var dto in recentTxDtos)
+            {
+                if (string.IsNullOrEmpty(dto.TxId)) continue;
+
+                var type = DetermineTransactionType(dto);
+                var status = !string.IsNullOrEmpty(dto.ContractResult) &&
+                             dto.ContractResult.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase)
+                    ? TransactionStatus.Confirmed
+                    : !string.IsNullOrEmpty(dto.ContractResult) &&
+                      dto.ContractResult.Contains("FAIL", StringComparison.OrdinalIgnoreCase)
+                        ? TransactionStatus.Failed
+                        : TransactionStatus.Unconfirmed;
+
+                var fromAddr = FormatAddress(dto.OwnerAddress);
+                var toAddr = FormatAddress(dto.ToAddress);
+                decimal amount = 0m;
+
+                if (type == TransactionType.NativeTransfer)
+                    amount = (decimal)dto.AmountSun / SunPerTrx;
+                else if (type == TransactionType.Stake || type == TransactionType.Unstake
+                         || type == TransactionType.Delegate || type == TransactionType.Undelegate)
+                    amount = (decimal)dto.AmountSun / SunPerTrx;
+
+                var timestamp = dto.BlockTimestamp > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(dto.BlockTimestamp)
+                    : (DateTimeOffset?)null;
+
+                recentTransactions.Add(new TronTransactionDetail(
+                    TxId: dto.TxId,
+                    FromAddress: fromAddr,
+                    ToAddress: toAddr,
+                    Status: status,
+                    Failure: null,
+                    Type: type,
+                    Amount: amount,
+                    TokenTransfer: null,
+                    BlockNumber: dto.BlockNumber > 0 ? dto.BlockNumber : null,
+                    Timestamp: timestamp,
+                    Cost: null));
+            }
+
+            return TronResult<AccountOverview>.Ok(new AccountOverview(
+                Address: FormatAddress(hexAddress),
+                TrxBalance: trxBalance,
+                Bandwidth: bandwidthTotal,
+                BandwidthUsed: bandwidthUsed,
+                Energy: resourceInfo.EnergyLimit,
+                EnergyUsed: resourceInfo.EnergyUsed,
+                RecentTransactions: recentTransactions));
+        }
+        catch (Exception ex)
+        {
+            return TronResult<AccountOverview>.Fail(
+                TronErrorCode.ProviderConnectionFailed, ex.Message, ex.ToString());
+        }
+    }
+
     // === Resource Management (Staking 2.0) ===
 
     /// <summary>
@@ -481,10 +564,11 @@ public class TronClient
 
     /// <summary>
     /// Gets resource information (bandwidth, energy, staking) for an address.
-    /// Merges data from GetAccountAsync (staking amounts from frozenV2) and
-    /// GetAccountResourceAsync (bandwidth/energy limits and usage).
-    /// Note: Delegation info requires the /wallet/getdelegatedresourceV2 endpoint
-    /// which is not yet supported; delegation arrays are returned empty.
+    /// Merges data from GetAccountAsync (staking amounts from frozenV2),
+    /// GetAccountResourceAsync (bandwidth/energy limits and usage), and
+    /// delegation queries via GetDelegatedResourceAccountIndexAsync / GetDelegatedResourceAsync.
+    /// Delegation queries are best-effort: if they fail, the rest of the resource info
+    /// is still returned with empty delegation lists.
     /// </summary>
     public async Task<TronResult<ResourceInfo>> GetResourceInfoAsync(
         string address, CancellationToken ct = default)
@@ -501,6 +585,85 @@ public class TronClient
             var accountInfo = accountTask.Result;
             var resourceInfo = resourceTask.Result;
 
+            // Fetch delegation info (best-effort)
+            IReadOnlyList<DelegationInfo> delegationsOut = Array.Empty<DelegationInfo>();
+            IReadOnlyList<DelegationInfo> delegationsIn = Array.Empty<DelegationInfo>();
+
+            try
+            {
+                var index = await Provider.GetDelegatedResourceAccountIndexAsync(hexAddress, ct);
+
+                var outList = new List<DelegationInfo>();
+                var inList = new List<DelegationInfo>();
+
+                // Query delegations OUT (this account delegated TO these addresses)
+                foreach (var toAddr in index.ToAddresses)
+                {
+                    try
+                    {
+                        var resources = await Provider.GetDelegatedResourceAsync(hexAddress, toAddr, ct);
+                        foreach (var r in resources)
+                        {
+                            if (r.FrozenBalanceForBandwidth > 0)
+                            {
+                                outList.Add(new DelegationInfo(
+                                    FormatAddress(toAddr),
+                                    (decimal)r.FrozenBalanceForBandwidth / SunPerTrx,
+                                    ResourceType.Bandwidth, false));
+                            }
+                            if (r.FrozenBalanceForEnergy > 0)
+                            {
+                                outList.Add(new DelegationInfo(
+                                    FormatAddress(toAddr),
+                                    (decimal)r.FrozenBalanceForEnergy / SunPerTrx,
+                                    ResourceType.Energy, false));
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Skip this delegation pair on failure
+                    }
+                }
+
+                // Query delegations IN (these addresses delegated TO this account)
+                foreach (var fromAddr in index.FromAddresses)
+                {
+                    try
+                    {
+                        var resources = await Provider.GetDelegatedResourceAsync(fromAddr, hexAddress, ct);
+                        foreach (var r in resources)
+                        {
+                            if (r.FrozenBalanceForBandwidth > 0)
+                            {
+                                inList.Add(new DelegationInfo(
+                                    FormatAddress(fromAddr),
+                                    (decimal)r.FrozenBalanceForBandwidth / SunPerTrx,
+                                    ResourceType.Bandwidth, false));
+                            }
+                            if (r.FrozenBalanceForEnergy > 0)
+                            {
+                                inList.Add(new DelegationInfo(
+                                    FormatAddress(fromAddr),
+                                    (decimal)r.FrozenBalanceForEnergy / SunPerTrx,
+                                    ResourceType.Energy, false));
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Skip this delegation pair on failure
+                    }
+                }
+
+                delegationsOut = outList;
+                delegationsIn = inList;
+            }
+            catch
+            {
+                // Delegation queries failed; continue with empty lists
+            }
+
             return TronResult<ResourceInfo>.Ok(new ResourceInfo(
                 BandwidthTotal: resourceInfo.FreeBandwidthLimit + resourceInfo.TotalBandwidthLimit,
                 BandwidthUsed: resourceInfo.FreeBandwidthUsed + resourceInfo.TotalBandwidthUsed,
@@ -508,8 +671,8 @@ public class TronClient
                 EnergyUsed: resourceInfo.EnergyUsed,
                 StakedForBandwidth: (decimal)accountInfo.FrozenBalanceForBandwidth / SunPerTrx,
                 StakedForEnergy: (decimal)accountInfo.FrozenBalanceForEnergy / SunPerTrx,
-                DelegationsOut: Array.Empty<DelegationInfo>(),
-                DelegationsIn: Array.Empty<DelegationInfo>()));
+                DelegationsOut: delegationsOut,
+                DelegationsIn: delegationsIn));
         }
         catch (Exception ex)
         {

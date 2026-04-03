@@ -544,6 +544,155 @@ public class TronHttpProviderTests
         Assert.Equal(0, energy);
     }
 
+    // --- GetAccountTransactionsAsync ---
+
+    [Fact]
+    public async Task GetAccountTransactionsAsync_ParsesTransactions()
+    {
+        var responseJson = """
+        {
+            "data": [
+                {
+                    "txID": "abc123",
+                    "blockNumber": 100,
+                    "block_timestamp": 1700000000000,
+                    "raw_data": {
+                        "contract": [{
+                            "type": "TransferContract",
+                            "parameter": {
+                                "value": {
+                                    "owner_address": "41a1b2c3d4e5f60000000000000000000000000001",
+                                    "to_address": "41a1b2c3d4e5f60000000000000000000000000002",
+                                    "amount": 5000000
+                                }
+                            }
+                        }]
+                    },
+                    "ret": [{ "contractRet": "SUCCESS" }]
+                }
+            ],
+            "success": true
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetAccountTransactionsAsync("41a1b2c3d4e5f60000000000000000000000000001", 10);
+
+        Assert.Single(result);
+        Assert.Equal("abc123", result[0].TxId);
+        Assert.Equal(100, result[0].BlockNumber);
+        Assert.Equal(1700000000000, result[0].BlockTimestamp);
+        Assert.Equal("TransferContract", result[0].ContractType);
+        Assert.Equal("SUCCESS", result[0].ContractResult);
+        Assert.Equal(5000000, result[0].AmountSun);
+
+        Assert.Contains("/v1/accounts/", handler.LastRequestUri!.ToString());
+        Assert.Contains("/transactions", handler.LastRequestUri!.ToString());
+        Assert.Equal(HttpMethod.Get, handler.LastRequestMethod);
+    }
+
+    [Fact]
+    public async Task GetAccountTransactionsAsync_EmptyData_ReturnsEmptyList()
+    {
+        var handler = MockJson("""{ "data": [], "success": true }""");
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetAccountTransactionsAsync("41a1b2c3d4e5f60000000000000000000000000001");
+
+        Assert.Empty(result);
+    }
+
+    // --- GetDelegatedResourceAccountIndexAsync ---
+
+    [Fact]
+    public async Task GetDelegatedResourceAccountIndexAsync_ParsesAddresses()
+    {
+        var responseJson = """
+        {
+            "account": "41a1b2c3d4e5f60000000000000000000000000001",
+            "toAccounts": [
+                "41b2c3d4e5f60000000000000000000000000000a1",
+                "41c3d4e5f60000000000000000000000000000a1b2"
+            ],
+            "fromAccounts": [
+                "41d4e5f6000000000000000000000000000000a1b2"
+            ]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetDelegatedResourceAccountIndexAsync("41a1b2c3d4e5f60000000000000000000000000001");
+
+        Assert.Equal(2, result.ToAddresses.Count);
+        Assert.Equal("41b2c3d4e5f60000000000000000000000000000a1", result.ToAddresses[0]);
+        Assert.Single(result.FromAddresses);
+
+        Assert.Contains("/wallet/getdelegatedresourceaccountindexV2", handler.LastRequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetDelegatedResourceAccountIndexAsync_EmptyResponse_ReturnsEmptyLists()
+    {
+        var handler = MockJson("{}");
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetDelegatedResourceAccountIndexAsync("41a1b2c3d4e5f60000000000000000000000000001");
+
+        Assert.Empty(result.ToAddresses);
+        Assert.Empty(result.FromAddresses);
+    }
+
+    // --- GetDelegatedResourceAsync ---
+
+    [Fact]
+    public async Task GetDelegatedResourceAsync_ParsesResources()
+    {
+        var responseJson = """
+        {
+            "delegatedResource": [
+                {
+                    "from": "41a1b2c3d4e5f60000000000000000000000000001",
+                    "to": "41b2c3d4e5f60000000000000000000000000000a1",
+                    "frozen_balance_for_bandwidth": 5000000,
+                    "frozen_balance_for_energy": 3000000
+                }
+            ]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetDelegatedResourceAsync(
+            "41a1b2c3d4e5f60000000000000000000000000001",
+            "41b2c3d4e5f60000000000000000000000000000a1");
+
+        Assert.Single(result);
+        Assert.Equal("41a1b2c3d4e5f60000000000000000000000000001", result[0].From);
+        Assert.Equal("41b2c3d4e5f60000000000000000000000000000a1", result[0].To);
+        Assert.Equal(5000000, result[0].FrozenBalanceForBandwidth);
+        Assert.Equal(3000000, result[0].FrozenBalanceForEnergy);
+
+        Assert.Contains("/wallet/getdelegatedresourceV2", handler.LastRequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetDelegatedResourceAsync_EmptyResponse_ReturnsEmptyList()
+    {
+        var handler = MockJson("{}");
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetDelegatedResourceAsync(
+            "41a1b2c3d4e5f60000000000000000000000000001",
+            "41b2c3d4e5f60000000000000000000000000000a1");
+
+        Assert.Empty(result);
+    }
+
     // --- Constructor tests ---
 
     [Fact]

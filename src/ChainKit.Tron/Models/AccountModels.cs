@@ -38,3 +38,14 @@ public record TransactionInfoDto(
     // Resource TRX costs in Sun (populated by GetTransactionInfoByIdAsync from receipt)
     long EnergyFee = 0, long NetFee = 0);
 public record AccountResourceInfo(long FreeBandwidthLimit, long FreeBandwidthUsed, long EnergyLimit, long EnergyUsed, long TotalBandwidthLimit, long TotalBandwidthUsed);
+
+// Delegation DTOs (used by ITronProvider)
+
+public record DelegatedResourceIndex(
+    IReadOnlyList<string> ToAddresses,
+    IReadOnlyList<string> FromAddresses);
+
+public record DelegatedResourceInfo(
+    string From, string To,
+    long FrozenBalanceForBandwidth,
+    long FrozenBalanceForEnergy);

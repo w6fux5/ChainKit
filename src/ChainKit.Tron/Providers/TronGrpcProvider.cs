@@ -74,6 +74,14 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         MethodType.Unary, "protocol.Wallet", "EstimateEnergy",
         ByteArrayMarshaller, ByteArrayMarshaller);
 
+    private static readonly Method<byte[], byte[]> GetDelegatedResourceAccountIndexV2Method = new(
+        MethodType.Unary, "protocol.Wallet", "GetDelegatedResourceAccountIndexV2",
+        ByteArrayMarshaller, ByteArrayMarshaller);
+
+    private static readonly Method<byte[], byte[]> GetDelegatedResourceV2Method = new(
+        MethodType.Unary, "protocol.Wallet", "GetDelegatedResourceV2",
+        ByteArrayMarshaller, ByteArrayMarshaller);
+
     // --- gRPC Method descriptors for WalletSolidity service ---
 
     private static readonly Method<byte[], byte[]> GetTransactionInfoByIdMethod = new(
@@ -319,6 +327,43 @@ public class TronGrpcProvider : ITronProvider, IDisposable
 
         // EstimateEnergyMessage: field 1 (int64) = energy_required
         return ParseVarintField(response, 1);
+    }
+
+    public Task<IReadOnlyList<TransactionInfoDto>> GetAccountTransactionsAsync(
+        string address, int limit = 10, CancellationToken ct = default)
+    {
+        // TronGrid /v1/accounts/{address}/transactions is an HTTP-only API.
+        // gRPC full nodes do not provide an equivalent endpoint.
+        return Task.FromResult<IReadOnlyList<TransactionInfoDto>>(Array.Empty<TransactionInfoDto>());
+    }
+
+    public async Task<DelegatedResourceIndex> GetDelegatedResourceAccountIndexAsync(
+        string address, CancellationToken ct = default)
+    {
+        var hexAddress = NormalizeToHex(address);
+        var addressBytes = Convert.FromHexString(hexAddress);
+        // BytesMessage: field 1 (bytes) = value
+        var request = EncodeField(1, addressBytes);
+
+        var response = await CallFullNodeAsync(GetDelegatedResourceAccountIndexV2Method, request, ct);
+        return ParseDelegatedResourceIndex(response);
+    }
+
+    public async Task<IReadOnlyList<DelegatedResourceInfo>> GetDelegatedResourceAsync(
+        string fromAddress, string toAddress, CancellationToken ct = default)
+    {
+        var hexFrom = NormalizeToHex(fromAddress);
+        var hexTo = NormalizeToHex(toAddress);
+        // DelegatedResourceMessage: field 1 (bytes fromAddress), field 2 (bytes toAddress)
+        using var ms = new MemoryStream();
+        var fromBytes = EncodeField(1, Convert.FromHexString(hexFrom));
+        var toBytes = EncodeField(2, Convert.FromHexString(hexTo));
+        ms.Write(fromBytes, 0, fromBytes.Length);
+        ms.Write(toBytes, 0, toBytes.Length);
+        var request = ms.ToArray();
+
+        var response = await CallFullNodeAsync(GetDelegatedResourceV2Method, request, ct);
+        return ParseDelegatedResources(response);
     }
 
     // --- Channel & call helpers ---
@@ -716,6 +761,52 @@ public class TronGrpcProvider : ITronProvider, IDisposable
             EnergyUsed: energyUsed,
             TotalBandwidthLimit: netLimit,
             TotalBandwidthUsed: netUsed);
+    }
+
+    private static DelegatedResourceIndex ParseDelegatedResourceIndex(byte[] data)
+    {
+        if (data.Length == 0)
+            return new DelegatedResourceIndex(Array.Empty<string>(), Array.Empty<string>());
+
+        // DelegatedResourceAccountIndex: field 1 (bytes account),
+        //   field 2 (repeated bytes toAccounts), field 3 (repeated bytes fromAccounts)
+        var toEntries = ParseRepeatedBytesField(data, 2);
+        var fromEntries = ParseRepeatedBytesField(data, 3);
+
+        var toAddresses = toEntries
+            .Select(b => Convert.ToHexString(b).ToLowerInvariant())
+            .ToList();
+        var fromAddresses = fromEntries
+            .Select(b => Convert.ToHexString(b).ToLowerInvariant())
+            .ToList();
+
+        return new DelegatedResourceIndex(toAddresses, fromAddresses);
+    }
+
+    private static IReadOnlyList<DelegatedResourceInfo> ParseDelegatedResources(byte[] data)
+    {
+        if (data.Length == 0)
+            return Array.Empty<DelegatedResourceInfo>();
+
+        // DelegatedResourceList: field 1 (repeated DelegatedResource)
+        // DelegatedResource: field 1 (bytes from), field 2 (bytes to),
+        //   field 3 (int64 frozen_balance_for_bandwidth), field 4 (int64 frozen_balance_for_energy)
+        var entries = ParseRepeatedBytesField(data, 1);
+        var results = new List<DelegatedResourceInfo>();
+
+        foreach (var entry in entries)
+        {
+            var fromBytes = ParseBytesField(entry, 1);
+            var toBytes = ParseBytesField(entry, 2);
+            var bw = ParseVarintField(entry, 3);
+            var energy = ParseVarintField(entry, 4);
+
+            var from = fromBytes.Length > 0 ? Convert.ToHexString(fromBytes).ToLowerInvariant() : "";
+            var to = toBytes.Length > 0 ? Convert.ToHexString(toBytes).ToLowerInvariant() : "";
+            results.Add(new DelegatedResourceInfo(from, to, bw, energy));
+        }
+
+        return results;
     }
 
     // --- Shared helpers ---

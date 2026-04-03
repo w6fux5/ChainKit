@@ -248,7 +248,142 @@ public class TronHttpProvider : ITronProvider
         return 0;
     }
 
+    public async Task<IReadOnlyList<TransactionInfoDto>> GetAccountTransactionsAsync(
+        string address, int limit = 10, CancellationToken ct = default)
+    {
+        var hexAddress = NormalizeToHex(address);
+        var json = await GetAsync($"/v1/accounts/{hexAddress}/transactions?limit={limit}", ct);
+        var root = JsonDocument.Parse(json).RootElement;
+
+        var results = new List<TransactionInfoDto>();
+        if (root.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var txEl in dataEl.EnumerateArray())
+            {
+                var txId = txEl.TryGetProperty("txID", out var idEl) ? idEl.GetString() ?? "" : "";
+                if (string.IsNullOrEmpty(txId)) continue;
+
+                var blockNumber = txEl.TryGetProperty("blockNumber", out var bnEl) ? bnEl.GetInt64() : 0;
+                var blockTs = txEl.TryGetProperty("block_timestamp", out var btsEl) ? btsEl.GetInt64() : 0;
+
+                string contractType = "";
+                string ownerAddress = "";
+                string toAddress = "";
+                long amountSun = 0;
+                string? contractAddress = null;
+                string? contractData = null;
+
+                if (txEl.TryGetProperty("raw_data", out var rawDataEl)
+                    && rawDataEl.TryGetProperty("contract", out var contractsEl)
+                    && contractsEl.GetArrayLength() > 0)
+                {
+                    var contract = contractsEl[0];
+                    contractType = contract.TryGetProperty("type", out var typeEl)
+                        ? typeEl.GetString() ?? "" : "";
+
+                    if (contract.TryGetProperty("parameter", out var paramEl)
+                        && paramEl.TryGetProperty("value", out var valueEl))
+                    {
+                        ownerAddress = valueEl.TryGetProperty("owner_address", out var ownerEl)
+                            ? ownerEl.GetString() ?? "" : "";
+                        toAddress = valueEl.TryGetProperty("to_address", out var toEl)
+                            ? toEl.GetString() ?? "" : "";
+                        amountSun = valueEl.TryGetProperty("amount", out var amtEl)
+                            ? amtEl.GetInt64() : 0;
+                        contractAddress = valueEl.TryGetProperty("contract_address", out var caEl)
+                            ? caEl.GetString() : null;
+                        contractData = valueEl.TryGetProperty("data", out var cdEl)
+                            ? cdEl.GetString() : null;
+                    }
+                }
+
+                var contractResult = "";
+                if (txEl.TryGetProperty("ret", out var retEl) && retEl.GetArrayLength() > 0)
+                {
+                    var first = retEl[0];
+                    contractResult = first.TryGetProperty("contractRet", out var crEl)
+                        ? crEl.GetString() ?? "" : "";
+                }
+
+                results.Add(new TransactionInfoDto(
+                    txId, blockNumber, blockTs, contractResult, 0, 0, 0,
+                    contractType, ownerAddress, toAddress, amountSun, contractAddress, contractData));
+            }
+        }
+
+        return results;
+    }
+
+    public async Task<DelegatedResourceIndex> GetDelegatedResourceAccountIndexAsync(
+        string address, CancellationToken ct = default)
+    {
+        var hexAddress = NormalizeToHex(address);
+        var json = await PostAsync("/wallet/getdelegatedresourceaccountindexV2",
+            new { value = hexAddress, visible = false }, ct);
+
+        var root = JsonDocument.Parse(json).RootElement;
+
+        var toAddresses = new List<string>();
+        var fromAddresses = new List<string>();
+
+        if (root.TryGetProperty("toAccounts", out var toEl) && toEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in toEl.EnumerateArray())
+            {
+                var addr = item.GetString();
+                if (!string.IsNullOrEmpty(addr))
+                    toAddresses.Add(addr);
+            }
+        }
+
+        if (root.TryGetProperty("fromAccounts", out var fromEl) && fromEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in fromEl.EnumerateArray())
+            {
+                var addr = item.GetString();
+                if (!string.IsNullOrEmpty(addr))
+                    fromAddresses.Add(addr);
+            }
+        }
+
+        return new DelegatedResourceIndex(toAddresses, fromAddresses);
+    }
+
+    public async Task<IReadOnlyList<DelegatedResourceInfo>> GetDelegatedResourceAsync(
+        string fromAddress, string toAddress, CancellationToken ct = default)
+    {
+        var hexFrom = NormalizeToHex(fromAddress);
+        var hexTo = NormalizeToHex(toAddress);
+        var json = await PostAsync("/wallet/getdelegatedresourceV2",
+            new { fromAddress = hexFrom, toAddress = hexTo, visible = false }, ct);
+
+        var root = JsonDocument.Parse(json).RootElement;
+        var results = new List<DelegatedResourceInfo>();
+
+        if (root.TryGetProperty("delegatedResource", out var drEl) && drEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in drEl.EnumerateArray())
+            {
+                var from = entry.TryGetProperty("from", out var fEl) ? fEl.GetString() ?? "" : "";
+                var to = entry.TryGetProperty("to", out var tEl) ? tEl.GetString() ?? "" : "";
+                var bw = entry.TryGetProperty("frozen_balance_for_bandwidth", out var bwEl) ? bwEl.GetInt64() : 0;
+                var energy = entry.TryGetProperty("frozen_balance_for_energy", out var enEl) ? enEl.GetInt64() : 0;
+                results.Add(new DelegatedResourceInfo(from, to, bw, energy));
+            }
+        }
+
+        return results;
+    }
+
     // --- Private helpers ---
+
+    private async Task<string> GetAsync(string path, CancellationToken ct)
+    {
+        var url = _baseUrl + path;
+        var response = await _httpClient.GetAsync(url, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(ct);
+    }
 
     private async Task<string> PostAsync(string path, object body, CancellationToken ct)
     {
