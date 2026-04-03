@@ -28,7 +28,9 @@
       "Bash(printf %x\\\\n:*)",
       "Bash(printf %d\\\\n:*)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(curl:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'TRX: {d.get\\(\\\\\"balance\\\\\",0\\)/1_000_000} TRX \\({d.get\\(\\\\\"balance\\\\\",0\\)} Sun\\)'\\)\")"
     ]
   }
 }
