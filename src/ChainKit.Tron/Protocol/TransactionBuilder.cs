@@ -122,6 +122,117 @@ public class TransactionBuilder
     }
 
     /// <summary>
+    /// Creates a Stake 2.0 freeze transaction.
+    /// </summary>
+    /// <param name="ownerAddressHex">Owner address as hex (with 41 prefix).</param>
+    /// <param name="frozenBalance">Amount to freeze in sun.</param>
+    /// <param name="resource">Resource type (BANDWIDTH = 0, ENERGY = 1).</param>
+    public TransactionBuilder FreezeBalanceV2(string ownerAddressHex, long frozenBalance, ResourceCode resource)
+    {
+        var contract = new FreezeBalanceV2Contract
+        {
+            OwnerAddress = ByteString.CopyFrom(ownerAddressHex.FromHex()),
+            FrozenBalance = frozenBalance,
+            Resource = resource
+        };
+
+        var contractWrapper = new Transaction.Types.Contract
+        {
+            Type = Transaction.Types.Contract.Types.ContractType.FreezeBalanceV2Contract,
+            Parameter = Google.Protobuf.WellKnownTypes.Any.Pack(contract, "type.googleapis.com")
+        };
+
+        _raw.Contract.Add(contractWrapper);
+        _raw.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _raw.Expiration = _raw.Timestamp + 60 * 60 * 1000;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Creates a Stake 2.0 unfreeze transaction.
+    /// </summary>
+    /// <param name="ownerAddressHex">Owner address as hex (with 41 prefix).</param>
+    /// <param name="unfreezeBalance">Amount to unfreeze in sun.</param>
+    /// <param name="resource">Resource type (BANDWIDTH = 0, ENERGY = 1).</param>
+    public TransactionBuilder UnfreezeBalanceV2(string ownerAddressHex, long unfreezeBalance, ResourceCode resource)
+    {
+        var contract = new UnfreezeBalanceV2Contract
+        {
+            OwnerAddress = ByteString.CopyFrom(ownerAddressHex.FromHex()),
+            UnfreezeBalance = unfreezeBalance,
+            Resource = resource
+        };
+
+        var contractWrapper = new Transaction.Types.Contract
+        {
+            Type = Transaction.Types.Contract.Types.ContractType.UnfreezeBalanceV2Contract,
+            Parameter = Google.Protobuf.WellKnownTypes.Any.Pack(contract, "type.googleapis.com")
+        };
+
+        _raw.Contract.Add(contractWrapper);
+        _raw.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _raw.Expiration = _raw.Timestamp + 60 * 60 * 1000;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Creates a Stake 2.0 delegate resource transaction.
+    /// </summary>
+    public TransactionBuilder DelegateResource(string ownerAddressHex, string receiverAddressHex,
+        long balance, ResourceCode resource, bool lockPeriod = false)
+    {
+        var contract = new DelegateResourceContract
+        {
+            OwnerAddress = ByteString.CopyFrom(ownerAddressHex.FromHex()),
+            ReceiverAddress = ByteString.CopyFrom(receiverAddressHex.FromHex()),
+            Balance = balance,
+            Resource = resource,
+            Lock = lockPeriod
+        };
+
+        var contractWrapper = new Transaction.Types.Contract
+        {
+            Type = Transaction.Types.Contract.Types.ContractType.DelegateResourceContract,
+            Parameter = Google.Protobuf.WellKnownTypes.Any.Pack(contract, "type.googleapis.com")
+        };
+
+        _raw.Contract.Add(contractWrapper);
+        _raw.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _raw.Expiration = _raw.Timestamp + 60 * 60 * 1000;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Creates a Stake 2.0 undelegate resource transaction.
+    /// </summary>
+    public TransactionBuilder UndelegateResource(string ownerAddressHex, string receiverAddressHex,
+        long balance, ResourceCode resource)
+    {
+        var contract = new UnDelegateResourceContract
+        {
+            OwnerAddress = ByteString.CopyFrom(ownerAddressHex.FromHex()),
+            ReceiverAddress = ByteString.CopyFrom(receiverAddressHex.FromHex()),
+            Balance = balance,
+            Resource = resource
+        };
+
+        var contractWrapper = new Transaction.Types.Contract
+        {
+            Type = Transaction.Types.Contract.Types.ContractType.UnDelegateResourceContract,
+            Parameter = Google.Protobuf.WellKnownTypes.Any.Pack(contract, "type.googleapis.com")
+        };
+
+        _raw.Contract.Add(contractWrapper);
+        _raw.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _raw.Expiration = _raw.Timestamp + 60 * 60 * 1000;
+
+        return this;
+    }
+
+    /// <summary>
     /// Builds and returns the <see cref="Transaction"/> protobuf message.
     /// </summary>
     public Transaction Build()
