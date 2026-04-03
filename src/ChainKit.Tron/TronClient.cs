@@ -1,5 +1,6 @@
 using System.Numerics;
 using ChainKit.Core.Extensions;
+using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol;
@@ -450,6 +451,84 @@ public class TronClient
                 TronErrorCode.ProviderConnectionFailed, ex.Message, ex.ToString());
         }
     }
+
+    // === Contract Deployment ===
+
+    /// <summary>
+    /// Deploys a smart contract with the given bytecode and ABI.
+    /// Flow: build deploy tx with ref block -> sign -> broadcast -> extract contract address.
+    /// </summary>
+    public async Task<TronResult<DeployResult>> DeployContractAsync(
+        TronAccount account, byte[] bytecode, string abi,
+        long feeLimit = DefaultFeeLimit, CancellationToken ct = default)
+    {
+        try
+        {
+            var block = await Provider.GetNowBlockAsync(ct);
+            var (refBlockBytes, refBlockHash) = ExtractRefBlock(block);
+
+            var tx = new TransactionBuilder()
+                .CreateDeployContract(account.HexAddress, bytecode, abi)
+                .SetFeeLimit(feeLimit)
+                .SetRefBlock(refBlockBytes, refBlockHash)
+                .Build();
+
+            var signed = TransactionUtils.Sign(tx, account.PrivateKey);
+            var txId = TransactionUtils.ComputeTxId(signed).ToHex();
+
+            var broadcastResult = await Provider.BroadcastTransactionAsync(signed, ct);
+
+            if (!broadcastResult.Success)
+            {
+                var errorCode = MapBroadcastError(broadcastResult.Message);
+                return TronResult<DeployResult>.Fail(errorCode,
+                    broadcastResult.Message ?? "Broadcast failed", broadcastResult.Message);
+            }
+
+            // Contract address is derived from the deployer address + txId.
+            // On TRON the contract address is not directly returned by broadcast;
+            // it can be fetched later via getTransactionInfoById.
+            // For now, return the txId so callers can query the contract address.
+            var resultTxId = broadcastResult.TxId ?? txId;
+            return TronResult<DeployResult>.Ok(
+                new DeployResult(resultTxId, string.Empty));
+        }
+        catch (Exception ex)
+        {
+            return TronResult<DeployResult>.Fail(
+                TronErrorCode.ProviderConnectionFailed, ex.Message, ex.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Deploys a standard TRC20 token using a pre-compiled template.
+    /// Currently returns a failure because the template bytecode is not yet compiled.
+    /// Use <see cref="DeployContractAsync"/> with custom bytecode instead.
+    /// </summary>
+    public Task<TronResult<DeployResult>> DeployTrc20TokenAsync(
+        TronAccount account, Trc20TokenOptions options, CancellationToken ct = default)
+    {
+        try
+        {
+            var bytecode = Trc20Template.GetBytecode(options);
+            var abi = Trc20Template.GetAbi(options);
+            return DeployContractAsync(account, bytecode, abi, DefaultFeeLimit, ct);
+        }
+        catch (NotImplementedException)
+        {
+            return Task.FromResult(TronResult<DeployResult>.Fail(
+                TronErrorCode.ContractValidationFailed,
+                "TRC20 template bytecode not yet compiled. Use DeployContractAsync with custom bytecode."));
+        }
+    }
+
+    // === Contract Helpers ===
+
+    /// <summary>
+    /// Creates a <see cref="Trc20Contract"/> wrapper for interacting with an existing TRC20 token.
+    /// </summary>
+    public Trc20Contract GetTrc20Contract(string contractAddress, TronAccount ownerAccount)
+        => new Trc20Contract(Provider, contractAddress, ownerAccount);
 
     // === Helpers ===
 

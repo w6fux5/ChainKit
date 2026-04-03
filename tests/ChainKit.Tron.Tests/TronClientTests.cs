@@ -1,5 +1,7 @@
+using System.Numerics;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Providers;
 using ChainKit.Tron.Crypto;
@@ -454,5 +456,90 @@ public class TronClientTests
 
         Assert.False(result.Success);
         Assert.Equal("DuplicateTransaction", result.Error!.Code);
+    }
+
+    // === DeployContractAsync ===
+
+    [Fact]
+    public async Task DeployContractAsync_Success_ReturnsDeployResult()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+        var bytecode = new byte[] { 0x60, 0x80, 0x60, 0x40 }; // dummy EVM bytecode
+        var abi = "[{\"constant\":true,\"inputs\":[],\"name\":\"name\",\"outputs\":[{\"name\":\"\",\"type\":\"string\"}],\"type\":\"function\"}]";
+
+        _provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .Returns(new BlockInfo(6000, "0000000000001770abcdef1234567890abcdef1234567890abcdef1234567890",
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 0, new byte[34]));
+
+        _provider.BroadcastTransactionAsync(
+                Arg.Any<ChainKit.Tron.Protocol.Protobuf.Transaction>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new BroadcastResult(true, "deploy_tx_123", null));
+
+        var result = await _client.DeployContractAsync(account, bytecode, abi);
+
+        Assert.True(result.Success);
+        Assert.Equal("deploy_tx_123", result.Data!.TxId);
+    }
+
+    [Fact]
+    public async Task DeployContractAsync_BroadcastFails_ReturnsError()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        _provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .Returns(new BlockInfo(6000, "0000000000001770abcdef1234567890abcdef1234567890abcdef1234567890",
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 0, new byte[34]));
+
+        _provider.BroadcastTransactionAsync(
+                Arg.Any<ChainKit.Tron.Protocol.Protobuf.Transaction>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new BroadcastResult(false, null, "NOT_ENOUGH_ENERGY"));
+
+        var result = await _client.DeployContractAsync(account, new byte[] { 0x60 }, "[]");
+
+        Assert.False(result.Success);
+        Assert.Contains("ENERGY", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task DeployContractAsync_ProviderThrows_ReturnsFailResult()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+
+        _provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        var result = await _client.DeployContractAsync(account, new byte[] { 0x60 }, "[]");
+
+        Assert.False(result.Success);
+        Assert.Contains("Connection refused", result.Error!.Message);
+    }
+
+    // === DeployTrc20TokenAsync ===
+
+    [Fact]
+    public async Task DeployTrc20TokenAsync_ReturnsNotImplementedFail()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+        var options = new Trc20TokenOptions("Test", "TST", 18, BigInteger.Parse("1000000000000000000000000"));
+
+        var result = await _client.DeployTrc20TokenAsync(account, options);
+
+        Assert.False(result.Success);
+        Assert.Contains("not yet compiled", result.Error!.Message);
+    }
+
+    // === GetTrc20Contract ===
+
+    [Fact]
+    public void GetTrc20Contract_ReturnsContractInstance()
+    {
+        var account = TronAccount.FromPrivateKey(TestPrivateKey);
+        var contract = _client.GetTrc20Contract("41a614f803b6fd780986a42c78ec9c7f77e6ded13c", account);
+
+        Assert.NotNull(contract);
+        Assert.IsType<Trc20Contract>(contract);
+        Assert.Equal("41a614f803b6fd780986a42c78ec9c7f77e6ded13c", contract.ContractAddress);
     }
 }

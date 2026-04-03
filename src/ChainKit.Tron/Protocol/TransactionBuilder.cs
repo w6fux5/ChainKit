@@ -233,6 +233,49 @@ public class TransactionBuilder
     }
 
     /// <summary>
+    /// Creates a smart contract deployment transaction.
+    /// </summary>
+    /// <param name="ownerAddressHex">Deployer address as hex (with 41 prefix).</param>
+    /// <param name="bytecode">Compiled contract bytecode (with constructor args appended if any).</param>
+    /// <param name="abi">Contract ABI as a JSON string.</param>
+    /// <param name="name">Optional contract name.</param>
+    /// <param name="consumeUserResourcePercent">Percentage of user resource consumption (0-100).</param>
+    /// <param name="originEnergyLimit">Energy limit for the contract creator.</param>
+    public TransactionBuilder CreateDeployContract(
+        string ownerAddressHex, byte[] bytecode, string abi,
+        string? name = null, long consumeUserResourcePercent = 0, long originEnergyLimit = 10_000_000)
+    {
+        var smartContract = new SmartContract
+        {
+            OriginAddress = ByteString.CopyFrom(ownerAddressHex.FromHex()),
+            Bytecode = ByteString.CopyFrom(bytecode),
+            ConsumeUserResourcePercent = consumeUserResourcePercent,
+            OriginEnergyLimit = originEnergyLimit
+        };
+
+        if (!string.IsNullOrEmpty(name))
+            smartContract.Name = name;
+
+        var createContract = new CreateSmartContract
+        {
+            OwnerAddress = ByteString.CopyFrom(ownerAddressHex.FromHex()),
+            NewContract = smartContract
+        };
+
+        var contractWrapper = new Transaction.Types.Contract
+        {
+            Type = Transaction.Types.Contract.Types.ContractType.CreateSmartContract,
+            Parameter = Google.Protobuf.WellKnownTypes.Any.Pack(createContract, "type.googleapis.com")
+        };
+
+        _raw.Contract.Add(contractWrapper);
+        _raw.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _raw.Expiration = _raw.Timestamp + 60 * 60 * 1000;
+
+        return this;
+    }
+
+    /// <summary>
     /// Builds and returns the <see cref="Transaction"/> protobuf message.
     /// </summary>
     public Transaction Build()
