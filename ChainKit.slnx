@@ -1,1 +1,10 @@
-<Solution />
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ChainKit.Core/ChainKit.Core.csproj" />
+    <Project Path="src/ChainKit.Tron/ChainKit.Tron.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ChainKit.Core.Tests/ChainKit.Core.Tests.csproj" />
+    <Project Path="tests/ChainKit.Tron.Tests/ChainKit.Tron.Tests.csproj" />
+  </Folder>
+</Solution>
