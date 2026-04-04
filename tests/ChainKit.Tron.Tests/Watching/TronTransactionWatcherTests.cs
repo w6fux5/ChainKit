@@ -384,6 +384,90 @@ public class TronTransactionWatcherTests
         Assert.Equal(18, received.Decimals);
     }
 
+    [Fact]
+    public async Task FromAddress_TrxSent_FiresEvent()
+    {
+        var block = MakeBlock(1, MakeTrxTxWithAmount(WatchedAddr, UnrelatedAddr, 5_000_000));
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
+
+        TrxSentEventArgs? sent = null;
+        watcher.OnTrxSent += (_, e) => sent = e;
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(sent);
+        Assert.Equal("tx1", sent!.TxId);
+        Assert.Equal(WatchedAddr, sent.FromAddress);
+        Assert.Equal(UnrelatedAddr, sent.ToAddress);
+        Assert.Equal(5m, sent.Amount);
+    }
+
+    [Fact]
+    public async Task FromAddress_TrxSent_DoesNotFireReceived()
+    {
+        var block = MakeBlock(1, MakeTrxTxWithAmount(WatchedAddr, UnrelatedAddr, 5_000_000));
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
+
+        TrxReceivedEventArgs? received = null;
+        watcher.OnTrxReceived += (_, e) => received = e;
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.Null(received);
+    }
+
+    [Fact]
+    public async Task FromAddress_Trc20Sent_FiresEvent()
+    {
+        var contractAddr = "41" + new string('e', 40);
+        long tokenAmount = 500_000_000;
+        var tx = MakeTrc20TxWithData(WatchedAddr, contractAddr, UnrelatedAddr, tokenAmount, "trc20out");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
+
+        Trc20SentEventArgs? sent = null;
+        watcher.OnTrc20Sent += (_, e) => sent = e;
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(sent);
+        Assert.Equal("trc20out", sent!.TxId);
+        Assert.Equal(WatchedAddr, sent.FromAddress);
+        Assert.Equal(contractAddr, sent.ContractAddress);
+        Assert.Equal((decimal)tokenAmount, sent.RawAmount);
+    }
+
+    [Fact]
+    public async Task SelfTransfer_FiresBothReceivedAndSent()
+    {
+        var block = MakeBlock(1, MakeTrxTxWithAmount(WatchedAddr, WatchedAddr, 1_000_000));
+        var stream = new MockBlockStream(block);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
+
+        TrxReceivedEventArgs? received = null;
+        TrxSentEventArgs? sent = null;
+        watcher.OnTrxReceived += (_, e) => received = e;
+        watcher.OnTrxSent += (_, e) => sent = e;
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(200);
+
+        Assert.NotNull(received);
+        Assert.NotNull(sent);
+        Assert.Equal("tx1", received!.TxId);
+        Assert.Equal("tx1", sent!.TxId);
+    }
+
     /// <summary>
     /// Builds an ABI-encoded string return value (offset + length + data padded to 32 bytes).
     /// </summary>

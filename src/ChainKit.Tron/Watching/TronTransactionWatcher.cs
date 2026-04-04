@@ -97,15 +97,26 @@ public class TronTransactionWatcher : IAsyncDisposable
 
     private async Task ProcessTransactionAsync(TronBlockTransaction tx, TronBlock block, CancellationToken ct)
     {
-        // Determine transaction type and fire appropriate event
+        bool fromWatched, toWatched;
+        lock (_lock)
+        {
+            fromWatched = _watchedAddresses.Contains(tx.FromAddress);
+            toWatched = _watchedAddresses.Contains(tx.ToAddress);
+        }
+
         if (tx.ContractType == "TransferContract")
         {
-            bool toWatched;
-            lock (_lock) { toWatched = _watchedAddresses.Contains(tx.ToAddress); }
+            var amount = ParseTrxAmount(tx.RawData);
+
             if (toWatched)
             {
-                var amount = ParseTrxAmount(tx.RawData);
                 OnTrxReceived?.Invoke(this, new TrxReceivedEventArgs(
+                    tx.TxId, tx.FromAddress, tx.ToAddress,
+                    amount, block.BlockNumber, block.Timestamp));
+            }
+            if (fromWatched)
+            {
+                OnTrxSent?.Invoke(this, new TrxSentEventArgs(
                     tx.TxId, tx.FromAddress, tx.ToAddress,
                     amount, block.BlockNumber, block.Timestamp));
             }
@@ -113,50 +124,58 @@ public class TronTransactionWatcher : IAsyncDisposable
         else if (tx.ContractType == "TriggerSmartContract")
         {
             var trc20Info = ParseTrc20Transfer(tx.RawData);
-            // Determine the actual recipient: if this is a TRC20 transfer,
-            // the "to" in the ABI data is the real token recipient.
             var effectiveTo = trc20Info.Recipient ?? tx.ToAddress;
 
-            bool toWatched;
+            // Check if the effective recipient is watched (for Received)
+            bool effectiveToWatched;
             lock (_lock)
             {
-                toWatched = _watchedAddresses.Contains(effectiveTo)
-                         || _watchedAddresses.Contains(tx.ToAddress);
+                effectiveToWatched = _watchedAddresses.Contains(effectiveTo)
+                                  || _watchedAddresses.Contains(tx.ToAddress);
             }
-            if (toWatched)
-            {
-                // Resolve token symbol + decimals if provider is available
-                string symbol = "";
-                decimal rawAmount = trc20Info.Amount;
-                decimal? convertedAmount = null;
-                int decimals = 0;
 
-                if (!string.IsNullOrEmpty(trc20Info.ContractAddress))
+            // Resolve token info (needed for both Received and Sent)
+            string symbol = "";
+            decimal rawAmount = trc20Info.Amount;
+            decimal? convertedAmount = null;
+            int decimals = 0;
+
+            if (!string.IsNullOrEmpty(trc20Info.ContractAddress))
+            {
+                try
                 {
-                    try
+                    var tokenInfo = await _tokenCache.GetOrResolveAsync(
+                        trc20Info.ContractAddress, _provider, ct);
+                    symbol = tokenInfo.Symbol;
+                    decimals = tokenInfo.Decimals;
+                    if (tokenInfo.Decimals > 0)
+                        convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                }
+                catch
+                {
+                    // resolution failed — try known-token cache only
+                    var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
+                    if (tokenInfo != null)
                     {
-                        var tokenInfo = await _tokenCache.GetOrResolveAsync(
-                            trc20Info.ContractAddress, _provider, ct);
                         symbol = tokenInfo.Symbol;
                         decimals = tokenInfo.Decimals;
                         if (tokenInfo.Decimals > 0)
                             convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
                     }
-                    catch
-                    {
-                        // Resolution failed — fall back to known tokens + memory cache
-                        var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
-                        if (tokenInfo != null)
-                        {
-                            decimals = tokenInfo.Decimals;
-                            if (tokenInfo.Decimals > 0)
-                                convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
-                            symbol = tokenInfo.Symbol;
-                        }
-                    }
                 }
+            }
 
+            if (effectiveToWatched)
+            {
                 OnTrc20Received?.Invoke(this, new Trc20ReceivedEventArgs(
+                    tx.TxId, tx.FromAddress, effectiveTo,
+                    trc20Info.ContractAddress, symbol,
+                    rawAmount, convertedAmount, decimals,
+                    block.BlockNumber, block.Timestamp));
+            }
+            if (fromWatched)
+            {
+                OnTrc20Sent?.Invoke(this, new Trc20SentEventArgs(
                     tx.TxId, tx.FromAddress, effectiveTo,
                     trc20Info.ContractAddress, symbol,
                     rawAmount, convertedAmount, decimals,
@@ -164,6 +183,7 @@ public class TronTransactionWatcher : IAsyncDisposable
             }
         }
 
+        // Pending tracking placeholder — will be replaced by Task 5
     }
 
     /// <summary>
