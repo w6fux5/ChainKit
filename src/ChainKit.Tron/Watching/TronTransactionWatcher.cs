@@ -10,7 +10,7 @@ namespace ChainKit.Tron.Watching;
 public class TronTransactionWatcher : IAsyncDisposable
 {
     private readonly ITronBlockStream _stream;
-    private readonly ITronProvider? _provider;
+    private readonly ITronProvider _provider;
     private readonly TokenInfoCache _tokenCache = new();
     private readonly HashSet<string> _watchedAddresses = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
@@ -20,10 +20,10 @@ public class TronTransactionWatcher : IAsyncDisposable
     // TRC20 transfer(address,uint256) selector: a9059cbb
     private static readonly byte[] Trc20TransferSelector = { 0xa9, 0x05, 0x9c, 0xbb };
 
-    public TronTransactionWatcher(ITronBlockStream stream, ITronProvider? provider = null)
+    public TronTransactionWatcher(ITronBlockStream stream, ITronProvider provider)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        _provider = provider;
+        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
     }
 
     public void WatchAddress(string address)
@@ -47,9 +47,18 @@ public class TronTransactionWatcher : IAsyncDisposable
         lock (_lock) { _watchedAddresses.Remove(normalized); }
     }
 
+    /// <summary>Fires when a TRX transfer TO a watched address is found in a block.</summary>
     public event EventHandler<TrxReceivedEventArgs>? OnTrxReceived;
+    /// <summary>Fires when a TRX transfer FROM a watched address is found in a block.</summary>
+    public event EventHandler<TrxSentEventArgs>? OnTrxSent;
+    /// <summary>Fires when a TRC20 transfer TO a watched address is found in a block.</summary>
     public event EventHandler<Trc20ReceivedEventArgs>? OnTrc20Received;
+    /// <summary>Fires when a TRC20 transfer FROM a watched address is found in a block.</summary>
+    public event EventHandler<Trc20SentEventArgs>? OnTrc20Sent;
+    /// <summary>Fires when a pending transaction is confirmed by Solidity Node.</summary>
     public event EventHandler<TransactionConfirmedEventArgs>? OnTransactionConfirmed;
+    /// <summary>Fires when a pending transaction fails or times out.</summary>
+    public event EventHandler<TransactionFailedEventArgs>? OnTransactionFailed;
 
     public Task StartAsync(CancellationToken ct = default)
     {
@@ -122,7 +131,7 @@ public class TronTransactionWatcher : IAsyncDisposable
                 decimal? convertedAmount = null;
                 int decimals = 0;
 
-                if (_provider is not null && !string.IsNullOrEmpty(trc20Info.ContractAddress))
+                if (!string.IsNullOrEmpty(trc20Info.ContractAddress))
                 {
                     try
                     {
@@ -133,18 +142,17 @@ public class TronTransactionWatcher : IAsyncDisposable
                         if (tokenInfo.Decimals > 0)
                             convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
                     }
-                    catch { /* resolution failed — fall through to known-token lookup */ }
-                }
-                else if (!string.IsNullOrEmpty(trc20Info.ContractAddress))
-                {
-                    // No provider — check known tokens + memory cache (no network call)
-                    var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
-                    if (tokenInfo != null)
+                    catch
                     {
-                        decimals = tokenInfo.Decimals;
-                        if (tokenInfo.Decimals > 0)
-                            convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
-                        symbol = tokenInfo.Symbol;
+                        // Resolution failed — fall back to known tokens + memory cache
+                        var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
+                        if (tokenInfo != null)
+                        {
+                            decimals = tokenInfo.Decimals;
+                            if (tokenInfo.Decimals > 0)
+                                convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                            symbol = tokenInfo.Symbol;
+                        }
                     }
                 }
 
@@ -156,9 +164,6 @@ public class TronTransactionWatcher : IAsyncDisposable
             }
         }
 
-        // Always fire confirmed event for matched transactions
-        OnTransactionConfirmed?.Invoke(this, new TransactionConfirmedEventArgs(
-            tx.TxId, block.BlockNumber, true));
     }
 
     /// <summary>

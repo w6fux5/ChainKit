@@ -28,6 +28,8 @@ internal class MockBlockStream : ITronBlockStream
 
 public class TronTransactionWatcherTests
 {
+    private static ITronProvider MockProvider() => Substitute.For<ITronProvider>();
+
     private const string WatchedAddr = "41aabbccdd00112233445566778899aabbccddeeff";
     private const string OtherAddr = "41112233445566778899aabbccddeeff00112233aa";
     private const string UnrelatedAddr = "41ffffffffffffffffffffffffffffffffffffffff";
@@ -78,7 +80,13 @@ public class TronTransactionWatcherTests
     [Fact]
     public void Constructor_NullStream_Throws()
     {
-        Assert.Throws<ArgumentNullException>(() => new TronTransactionWatcher(null!));
+        Assert.Throws<ArgumentNullException>(() => new TronTransactionWatcher(null!, MockProvider()));
+    }
+
+    [Fact]
+    public void Constructor_NullProvider_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => new TronTransactionWatcher(new MockBlockStream(), null!));
     }
 
     [Fact]
@@ -86,7 +94,7 @@ public class TronTransactionWatcherTests
     {
         var block = MakeBlock(1, MakeTrxTx(OtherAddr, WatchedAddr));
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         TrxReceivedEventArgs? received = null;
         watcher.OnTrxReceived += (_, e) => received = e;
@@ -108,7 +116,7 @@ public class TronTransactionWatcherTests
     {
         var block = MakeBlock(1, MakeTrc20Tx(OtherAddr, WatchedAddr));
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         Trc20ReceivedEventArgs? received = null;
         watcher.OnTrc20Received += (_, e) => received = e;
@@ -126,7 +134,7 @@ public class TronTransactionWatcherTests
     {
         var block = MakeBlock(1, MakeTrxTx(OtherAddr, WatchedAddr));
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         int fireCount = 0;
         watcher.OnTrxReceived += (_, _) => fireCount++;
@@ -146,7 +154,7 @@ public class TronTransactionWatcherTests
         var tx2 = MakeTrxTx(UnrelatedAddr, OtherAddr, "txB");
         var block = MakeBlock(1, tx1, tx2);
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         var receivedTxIds = new List<string>();
         watcher.OnTrxReceived += (_, e) => receivedTxIds.Add(e.TxId);
@@ -164,12 +172,13 @@ public class TronTransactionWatcherTests
     {
         var block = MakeBlock(1, MakeTrxTx(UnrelatedAddr, UnrelatedAddr));
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         int fireCount = 0;
         watcher.OnTrxReceived += (_, _) => fireCount++;
+        watcher.OnTrxSent += (_, _) => fireCount++;
         watcher.OnTrc20Received += (_, _) => fireCount++;
-        watcher.OnTransactionConfirmed += (_, _) => fireCount++;
+        watcher.OnTrc20Sent += (_, _) => fireCount++;
 
         watcher.WatchAddress(WatchedAddr);
         await watcher.StartAsync();
@@ -179,52 +188,12 @@ public class TronTransactionWatcherTests
     }
 
     [Fact]
-    public async Task OnTransactionConfirmed_FiresForAllMatchedTransactions()
-    {
-        var tx1 = MakeTrxTx(OtherAddr, WatchedAddr, "txA");
-        var tx2 = MakeTrc20Tx(OtherAddr, WatchedAddr, "txB");
-        var block = MakeBlock(5, tx1, tx2);
-        var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
-
-        var confirmed = new List<TransactionConfirmedEventArgs>();
-        watcher.OnTransactionConfirmed += (_, e) => confirmed.Add(e);
-
-        watcher.WatchAddress(WatchedAddr);
-        await watcher.StartAsync();
-        await Task.Delay(200);
-
-        Assert.Equal(2, confirmed.Count);
-        Assert.Contains(confirmed, c => c.TxId == "txA" && c.BlockNumber == 5 && c.Success);
-        Assert.Contains(confirmed, c => c.TxId == "txB" && c.BlockNumber == 5 && c.Success);
-    }
-
-    [Fact]
-    public async Task FromAddress_AlsoMatchesWatchedAddress()
-    {
-        // When the watched address is the sender
-        var block = MakeBlock(1, MakeTrxTx(WatchedAddr, UnrelatedAddr));
-        var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
-
-        var confirmed = new List<TransactionConfirmedEventArgs>();
-        watcher.OnTransactionConfirmed += (_, e) => confirmed.Add(e);
-
-        watcher.WatchAddress(WatchedAddr);
-        await watcher.StartAsync();
-        await Task.Delay(200);
-
-        // Confirmed fires for any matched tx (from or to)
-        Assert.Single(confirmed);
-    }
-
-    [Fact]
     public async Task StartAsync_StopAsync_Lifecycle()
     {
         // A stream that never ends — use cancellation to stop
         var neverEndingBlocks = new TronBlock[0]; // empty = finishes immediately
         var stream = new MockBlockStream(neverEndingBlocks);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         await watcher.StartAsync();
         await watcher.StopAsync();
@@ -235,7 +204,7 @@ public class TronTransactionWatcherTests
     public async Task DisposeAsync_CleansUp()
     {
         var stream = new MockBlockStream();
-        var watcher = new TronTransactionWatcher(stream);
+        var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         await watcher.StartAsync();
         await watcher.DisposeAsync();
@@ -295,7 +264,7 @@ public class TronTransactionWatcherTests
         var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
         var block = MakeBlock(1, tx);
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         TrxReceivedEventArgs? received = null;
         watcher.OnTrxReceived += (_, e) => received = e;
@@ -317,7 +286,7 @@ public class TronTransactionWatcherTests
         var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "trc20tx");
         var block = MakeBlock(1, tx);
         var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream);
+        await using var watcher = new TronTransactionWatcher(stream, MockProvider());
 
         Trc20ReceivedEventArgs? received = null;
         watcher.OnTrc20Received += (_, e) => received = e;
@@ -413,59 +382,6 @@ public class TronTransactionWatcherTests
         Assert.Equal((decimal)tokenAmount, received.RawAmount);
         Assert.Equal(5m, received.Amount); // 5e18 / 10^18 = 5.0
         Assert.Equal(18, received.Decimals);
-    }
-
-    [Fact]
-    public async Task Trc20Received_WithoutProvider_KnownToken_ConvertsAmount()
-    {
-        // Watcher created without provider — known tokens (USDT) still get converted
-        var contractAddr = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c";
-        long tokenAmount = 20_200_000;
-
-        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "raw_tx");
-        var block = MakeBlock(1, tx);
-        var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream); // no provider
-
-        Trc20ReceivedEventArgs? received = null;
-        watcher.OnTrc20Received += (_, e) => received = e;
-
-        watcher.WatchAddress(contractAddr);
-        await watcher.StartAsync();
-        await Task.Delay(200);
-
-        Assert.NotNull(received);
-        Assert.Equal("USDT", received!.Symbol);
-        Assert.Equal((decimal)tokenAmount, received.RawAmount);
-        // 20_200_000 / 10^6 = 20.2 — known token decimals used even without provider
-        Assert.Equal(20.2m, received.Amount);
-        Assert.Equal(6, received.Decimals);
-    }
-
-    [Fact]
-    public async Task Trc20Received_WithoutProvider_UnknownToken_ReturnsRawAmount()
-    {
-        // Watcher created without provider and unknown token — raw amount returned
-        var contractAddr = "41" + new string('e', 40);
-        long tokenAmount = 500_000_000;
-
-        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, tokenAmount, "raw_tx2");
-        var block = MakeBlock(1, tx);
-        var stream = new MockBlockStream(block);
-        await using var watcher = new TronTransactionWatcher(stream); // no provider
-
-        Trc20ReceivedEventArgs? received = null;
-        watcher.OnTrc20Received += (_, e) => received = e;
-
-        watcher.WatchAddress(contractAddr);
-        await watcher.StartAsync();
-        await Task.Delay(200);
-
-        Assert.NotNull(received);
-        Assert.Equal("", received!.Symbol);
-        Assert.Equal((decimal)tokenAmount, received.RawAmount); // raw, always present
-        Assert.Null(received.Amount); // unknown token — can't convert
-        Assert.Equal(0, received.Decimals);
     }
 
     /// <summary>

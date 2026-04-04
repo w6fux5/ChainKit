@@ -455,12 +455,13 @@ public class NileWatcherTests : IAsyncLifetime
 
         await using var watcher = new TronTransactionWatcher(stream, _localProvider);
 
-        // Set up event capture
-        TransactionConfirmedEventArgs? confirmedEvent = null;
+        // Set up event capture — use OnTrxReceived since OnTransactionConfirmed
+        // now fires from the confirmation tracker (not block discovery)
+        TrxReceivedEventArgs? receivedEvent = null;
         var eventReceived = new TaskCompletionSource<bool>();
-        watcher.OnTransactionConfirmed += (_, e) =>
+        watcher.OnTrxReceived += (_, e) =>
         {
-            confirmedEvent = e;
+            receivedEvent = e;
             eventReceived.TrySetResult(true);
         };
 
@@ -504,9 +505,8 @@ public class NileWatcherTests : IAsyncLifetime
             "This may be a ZMQ connectivity issue with " +
             NileLocalConstants.NileLocalZmqEndpoint);
 
-        Assert.NotNull(confirmedEvent);
-        Assert.True(confirmedEvent!.Success, "Transaction should be confirmed successfully");
-        Assert.True(confirmedEvent.BlockNumber > 0,
-            $"Expected block number > 0, got {confirmedEvent.BlockNumber}");
+        Assert.NotNull(receivedEvent);
+        Assert.True(receivedEvent!.BlockNumber > 0,
+            $"Expected block number > 0, got {receivedEvent.BlockNumber}");
     }
 }
