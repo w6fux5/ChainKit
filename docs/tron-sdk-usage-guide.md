@@ -700,7 +700,7 @@ var watcher = new TronTransactionWatcher(stream, provider);
 watcher.WatchAddress("TYourAddress...");
 watcher.WatchAddresses(new[] { "TAddress1...", "TAddress2..." });
 
-// 訂閱事件
+// 訂閱事件 — 入帳
 watcher.OnTrxReceived += (sender, e) =>
 {
     Console.WriteLine($"收到 TRX！");
@@ -723,9 +723,35 @@ watcher.OnTrc20Received += (sender, e) =>
     Console.WriteLine($"  小數位:   {e.Decimals}");
 };
 
+// 訂閱事件 — 轉出
+watcher.OnTrxSent += (sender, e) =>
+{
+    Console.WriteLine($"轉出 TRX！");
+    Console.WriteLine($"  TxId: {e.TxId}");
+    Console.WriteLine($"  從:   {e.FromAddress}");
+    Console.WriteLine($"  到:   {e.ToAddress}");
+    Console.WriteLine($"  金額: {e.Amount} TRX");
+};
+
+watcher.OnTrc20Sent += (sender, e) =>
+{
+    Console.WriteLine($"轉出 TRC20！");
+    Console.WriteLine($"  TxId:     {e.TxId}");
+    Console.WriteLine($"  合約:     {e.ContractAddress}");
+    Console.WriteLine($"  符號:     {e.Symbol}");
+    Console.WriteLine($"  原始金額: {e.RawAmount}");
+    Console.WriteLine($"  金額:     {e.Amount}");
+};
+
+// 訂閱事件 — 交易生命週期（確認 / 失敗）
 watcher.OnTransactionConfirmed += (sender, e) =>
 {
     Console.WriteLine($"交易確認：{e.TxId} (區塊 {e.BlockNumber})");
+};
+
+watcher.OnTransactionFailed += (sender, e) =>
+{
+    Console.WriteLine($"交易失敗：{e.TxId} - {e.Reason} ({e.Message})");
 };
 
 // 啟動監聽
@@ -745,10 +771,7 @@ await watcher.StopAsync();
 // 連接到你自架節點的 ZMQ 端點
 var stream = new ZmqBlockStream("tcp://your-node:5555");
 
-// 可以不傳 provider（不做代幣資訊解析）
-var watcher = new TronTransactionWatcher(stream);
-
-// 或傳入 provider 以自動解析代幣符號和小數位
+// 傳入 provider 以支援確認追蹤和代幣符號解析
 var watcher = new TronTransactionWatcher(stream, provider);
 
 watcher.WatchAddress("TYourAddress...");
@@ -772,6 +795,28 @@ watcher.UnwatchAddress("TOldAddress...");
 
 // 批量新增
 watcher.WatchAddresses(new[] { "TAddr1...", "TAddr2...", "TAddr3..." });
+```
+
+### 交易生命週期事件
+
+Watcher 追蹤完整的三階段交易生命週期：
+
+| 階段 | 事件 | 觸發時機 |
+|------|------|----------|
+| Unconfirmed | `OnTrx/Trc20 Received/Sent` | 交易出現在 block 中 |
+| Confirmed | `OnTransactionConfirmed` | Solidity Node 確認（~57 秒） |
+| Failed | `OnTransactionFailed` | 合約執行失敗或確認逾時 |
+
+TRC20 交易在 Solidity Node 確認後，確認追蹤器會檢查 `ReceiptResult`。`REVERT`、`OUT_OF_ENERGY` 等結果會觸發 `OnTransactionFailed`，而非 `OnTransactionConfirmed`。
+
+```csharp
+// 完整生命週期監聽範例
+watcher.OnTrxReceived += (s, e) => Console.WriteLine($"Incoming TRX: {e.Amount} from {e.FromAddress}");
+watcher.OnTrxSent += (s, e) => Console.WriteLine($"Outgoing TRX: {e.Amount} to {e.ToAddress}");
+watcher.OnTrc20Received += (s, e) => Console.WriteLine($"Incoming {e.Symbol}: {e.Amount}");
+watcher.OnTrc20Sent += (s, e) => Console.WriteLine($"Outgoing {e.Symbol}: {e.Amount}");
+watcher.OnTransactionConfirmed += (s, e) => Console.WriteLine($"Confirmed: {e.TxId}");
+watcher.OnTransactionFailed += (s, e) => Console.WriteLine($"Failed: {e.TxId} - {e.Reason}");
 ```
 
 ---

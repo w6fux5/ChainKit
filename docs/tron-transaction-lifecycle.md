@@ -85,18 +85,26 @@ else switch (result.Data.Status)
 - 「廣播未打包」窗口極短（0-3 秒），實務上幾乎觀察不到
 - 不像 Ethereum 有 gas 競價，交易不會長時間卡在 mempool
 
-## Watcher 已知限制
+## Watcher 功能
 
-### 1. 不檢查合約執行結果
+### 雙向監聽
 
-`TronTransactionWatcher` 看到區塊中有 `TriggerSmartContract` 就觸發 `OnTrc20Received`，不驗證合約是否成功執行。消費者需自行用 `GetTransactionDetailAsync` 二次確認。
+`TronTransactionWatcher` 同時監聽 incoming 和 outgoing 交易：
+- `OnTrxReceived` / `OnTrc20Received` — 接收（watched address 是收款方）
+- `OnTrxSent` / `OnTrc20Sent` — 轉出（watched address 是發送方）
 
-### 2. 轉出交易資訊不完整
+### 交易生命週期
 
-Watcher 監聽到 watched address 的轉出交易時：
-- `OnTrxReceived` / `OnTrc20Received` **不會觸發**（只監聽入帳）
-- `OnTransactionConfirmed` **會觸發**，但只有 TxId + BlockNumber，無金額和對象資訊
+Watcher 追蹤三階段生命週期：
 
-### 3. OnTransactionConfirmed 名稱誤導
+| 階段 | 事件 | 觸發時機 |
+|------|------|----------|
+| Unconfirmed | OnTrx/Trc20 Received/Sent | 交易出現在 block 中 |
+| Confirmed | OnTransactionConfirmed | Solidity Node 確認（~57 秒） |
+| Failed | OnTransactionFailed | 合約執行失敗或確認逾時 |
 
-此事件在「打包進區塊」時觸發，非 Solidity Node 確認後觸發，不代表交易已不可逆。
+### TRC20 合約執行結果
+
+確認追蹤器檢查 `ReceiptResult`：
+- `SUCCESS` / `DEFAULT` → `OnTransactionConfirmed`
+- `REVERT` / `OUT_OF_ENERGY` 等 → `OnTransactionFailed`
