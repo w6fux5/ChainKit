@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using ChainKit.Core.Extensions;
 using ChainKit.Tron.Contracts;
@@ -14,16 +15,25 @@ public class TronTransactionWatcher : IAsyncDisposable
     private readonly TokenInfoCache _tokenCache = new();
     private readonly HashSet<string> _watchedAddresses = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
+    private readonly ConcurrentDictionary<string, PendingTx> _pendingTransactions = new();
+    private readonly int _confirmationIntervalMs;
+    private readonly TimeSpan _maxPendingAge;
     private CancellationTokenSource? _cts;
     private Task? _watchTask;
+    private Task? _confirmationTask;
+
+    internal record PendingTx(string TxId, string ContractType, long BlockNumber, DateTimeOffset DiscoveredAt);
 
     // TRC20 transfer(address,uint256) selector: a9059cbb
     private static readonly byte[] Trc20TransferSelector = { 0xa9, 0x05, 0x9c, 0xbb };
 
-    public TronTransactionWatcher(ITronBlockStream stream, ITronProvider provider)
+    public TronTransactionWatcher(ITronBlockStream stream, ITronProvider provider,
+        int confirmationIntervalMs = 3000, TimeSpan? maxPendingAge = null)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _confirmationIntervalMs = confirmationIntervalMs;
+        _maxPendingAge = maxPendingAge ?? TimeSpan.FromMinutes(5);
     }
 
     public void WatchAddress(string address)
@@ -64,6 +74,7 @@ public class TronTransactionWatcher : IAsyncDisposable
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _watchTask = WatchLoopAsync(_cts.Token);
+        _confirmationTask = ConfirmationLoopAsync(_cts.Token);
         return Task.CompletedTask;
     }
 
@@ -75,6 +86,12 @@ public class TronTransactionWatcher : IAsyncDisposable
             try { await _watchTask; }
             catch (OperationCanceledException) { }
         }
+        if (_confirmationTask != null)
+        {
+            try { await _confirmationTask; }
+            catch (OperationCanceledException) { }
+        }
+        _pendingTransactions.Clear();
     }
 
     private async Task WatchLoopAsync(CancellationToken ct)
@@ -183,8 +200,89 @@ public class TronTransactionWatcher : IAsyncDisposable
             }
         }
 
-        // Pending tracking placeholder — will be replaced by Task 5
+        // Track for confirmation (avoid duplicate for self-transfers)
+        _pendingTransactions.TryAdd(tx.TxId,
+            new PendingTx(tx.TxId, tx.ContractType, block.BlockNumber, DateTimeOffset.UtcNow));
     }
+
+    private async Task ConfirmationLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(_confirmationIntervalMs, ct);
+            }
+            catch (OperationCanceledException) { return; }
+
+            foreach (var kvp in _pendingTransactions)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                var pending = kvp.Value;
+
+                // Check expiry
+                if (DateTimeOffset.UtcNow - pending.DiscoveredAt > _maxPendingAge)
+                {
+                    if (_pendingTransactions.TryRemove(kvp.Key, out _))
+                    {
+                        OnTransactionFailed?.Invoke(this, new TransactionFailedEventArgs(
+                            pending.TxId, pending.BlockNumber,
+                            TransactionFailureReason.Expired,
+                            "Transaction confirmation timed out"));
+                    }
+                    continue;
+                }
+
+                try
+                {
+                    var info = await _provider.GetTransactionInfoByIdAsync(pending.TxId, ct);
+                    if (string.IsNullOrEmpty(info.TxId) || info.BlockNumber == 0)
+                        continue; // Not yet on Solidity Node
+
+                    if (!_pendingTransactions.TryRemove(kvp.Key, out _))
+                        continue; // Already processed
+
+                    // Check contract execution result for TRC20
+                    if (pending.ContractType == "TriggerSmartContract" && IsContractFailed(info.ReceiptResult))
+                    {
+                        OnTransactionFailed?.Invoke(this, new TransactionFailedEventArgs(
+                            pending.TxId, info.BlockNumber,
+                            ParseFailureReason(info.ReceiptResult),
+                            info.ReceiptResult));
+                    }
+                    else
+                    {
+                        var timestamp = info.BlockTimestamp > 0
+                            ? DateTimeOffset.FromUnixTimeMilliseconds(info.BlockTimestamp)
+                            : DateTimeOffset.UtcNow;
+                        OnTransactionConfirmed?.Invoke(this, new TransactionConfirmedEventArgs(
+                            pending.TxId, info.BlockNumber, timestamp));
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { /* provider error — retry next cycle */ }
+            }
+        }
+    }
+
+    private static bool IsContractFailed(string receiptResult)
+    {
+        if (string.IsNullOrEmpty(receiptResult))
+            return false;
+        return receiptResult != "SUCCESS" && receiptResult != "DEFAULT";
+    }
+
+    private static TransactionFailureReason ParseFailureReason(string? receiptResult) => receiptResult switch
+    {
+        not null when receiptResult.Contains("REVERT", StringComparison.OrdinalIgnoreCase)
+            => TransactionFailureReason.ContractReverted,
+        not null when receiptResult.Contains("OUT_OF_ENERGY", StringComparison.OrdinalIgnoreCase)
+            => TransactionFailureReason.OutOfEnergy,
+        not null when receiptResult.Contains("BANDWIDTH", StringComparison.OrdinalIgnoreCase)
+            => TransactionFailureReason.OutOfBandwidth,
+        _ => TransactionFailureReason.Other
+    };
 
     /// <summary>
     /// Parses the TRX amount from the RawData byte array.

@@ -468,6 +468,93 @@ public class TronTransactionWatcherTests
         Assert.Equal("tx1", sent!.TxId);
     }
 
+    // --- Confirmation tracker tests ---
+
+    [Fact]
+    public async Task ConfirmationTracker_TrxConfirmed_FiresEvent()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        // Solidity Node confirms immediately
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0, ReceiptResult: "SUCCESS"));
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var tcs = new TaskCompletionSource<TransactionConfirmedEventArgs>();
+        watcher.OnTransactionConfirmed += (_, e) => tcs.TrySetResult(e);
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+
+        var confirmed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("tx1", confirmed.TxId);
+        Assert.Equal(1, confirmed.BlockNumber);
+    }
+
+    [Fact]
+    public async Task ConfirmationTracker_DelayedConfirmation_EventuallyFires()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        int callCount = 0;
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                if (Interlocked.Increment(ref callCount) <= 2)
+                    return Task.FromResult(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
+                return Task.FromResult(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0,
+                    ReceiptResult: "SUCCESS"));
+            });
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var tcs = new TaskCompletionSource<TransactionConfirmedEventArgs>();
+        watcher.OnTransactionConfirmed += (_, e) => tcs.TrySetResult(e);
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+
+        var confirmed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("tx1", confirmed.TxId);
+        Assert.True(callCount >= 3);
+    }
+
+    [Fact]
+    public async Task ConfirmationTracker_SelfTransfer_ConfirmsOnce()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(WatchedAddr, WatchedAddr, 1_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0, ReceiptResult: "SUCCESS"));
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var confirmedCount = 0;
+        watcher.OnTransactionConfirmed += (_, _) => Interlocked.Increment(ref confirmedCount);
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(500);
+
+        Assert.Equal(1, confirmedCount);
+    }
+
     /// <summary>
     /// Builds an ABI-encoded string return value (offset + length + data padded to 32 bytes).
     /// </summary>
