@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using NSubstitute;
@@ -670,6 +671,73 @@ public class TronTransactionWatcherTests
         Assert.Equal("tx1", failed.TxId);
         Assert.Equal(TransactionFailureReason.Expired, failed.Reason);
         Assert.Equal(1, failed.BlockNumber);
+    }
+
+    // --- Lifecycle cleanup and error recovery tests ---
+
+    [Fact]
+    public async Task StopAsync_ClearsPending_NoResidualEvents()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
+
+        var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var confirmedCount = 0;
+        var failedCount = 0;
+        watcher.OnTransactionConfirmed += (_, _) => Interlocked.Increment(ref confirmedCount);
+        watcher.OnTransactionFailed += (_, _) => Interlocked.Increment(ref failedCount);
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+        await Task.Delay(100);
+
+        await watcher.StopAsync();
+        await Task.Delay(200);
+
+        Assert.Equal(0, confirmedCount);
+        Assert.Equal(0, failedCount);
+
+        await watcher.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ConfirmationTracker_ProviderError_RetriesNextCycle()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        int callCount = 0;
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                if (Interlocked.Increment(ref callCount) <= 2)
+                    throw new HttpRequestException("Temporary failure");
+                return Task.FromResult(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0,
+                    ReceiptResult: "SUCCESS"));
+            });
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var tcs = new TaskCompletionSource<TransactionConfirmedEventArgs>();
+        watcher.OnTransactionConfirmed += (_, e) => tcs.TrySetResult(e);
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+
+        var confirmed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("tx1", confirmed.TxId);
+        Assert.True(callCount >= 3);
     }
 
     /// <summary>
