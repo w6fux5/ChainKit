@@ -65,13 +65,15 @@
 - 單套件 per 鏈（內部使用，不拆多套件）
 - Result Pattern（不用 Exception 處理業務錯誤）
 - 三層 Token Info Cache（內建表 → memory cache → 合約呼叫）
-- 交易狀態四態（NotFound/Unconfirmed/Confirmed/Failed，需 Full Node + Solidity Node）
+- 交易狀態三態（Unconfirmed/Confirmed/Failed，需 Full Node + Solidity Node）
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`
 
 ## 文件
 
 - `docs/tron-sdk-usage-guide.md` — 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
 - `docs/decisions/001-tron-sdk-architecture.md` — 架構決策紀錄
+- `docs/decisions/002-transaction-status-notfound-removal.md` — 移除 NotFound 狀態的決策
 - `docs/tron-sdk-development-summary.md` — 開發總結
+- `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 限制）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（與實作同步）
 - `docs/superpowers/plans/` — 實作計畫（3 份）

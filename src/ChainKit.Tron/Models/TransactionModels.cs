@@ -10,7 +10,7 @@ public record TronTransactionDetail(
     long? BlockNumber, DateTimeOffset? Timestamp,
     ResourceCost? Cost);
 
-public enum TransactionStatus { NotFound, Unconfirmed, Confirmed, Failed }
+public enum TransactionStatus { Unconfirmed = 0, Confirmed = 1, Failed = 2 }
 
 public enum TransactionType
 {
