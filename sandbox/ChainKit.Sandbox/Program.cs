@@ -1,9 +1,11 @@
+using System.Threading.Channels;
 using ChainKit.Tron;
 using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol;
 using ChainKit.Tron.Providers;
+using ChainKit.Tron.Watching;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,6 +46,28 @@ else
             string.IsNullOrEmpty(apiKey) ? null : apiKey));
 }
 builder.Services.AddSingleton<TronClient>(sp => new TronClient(sp.GetRequiredService<ITronProvider>()));
+
+// Watcher
+var watcherConfig = builder.Configuration.GetSection("Tron:Watcher");
+var pollingIntervalMs = watcherConfig.GetValue("PollingIntervalMs", 3000);
+var confirmationIntervalMs = watcherConfig.GetValue("ConfirmationIntervalMs", 3000);
+var maxPendingAgeMinutes = watcherConfig.GetValue("MaxPendingAgeMinutes", 5);
+var zmqEndpoint = builder.Configuration["Tron:ZmqEndpoint"];
+
+builder.Services.AddSingleton<ITronBlockStream>(sp =>
+{
+    if (!string.IsNullOrEmpty(zmqEndpoint))
+        return new ZmqBlockStream(zmqEndpoint);
+    return new PollingBlockStream(sp.GetRequiredService<ITronProvider>(), pollingIntervalMs);
+});
+builder.Services.AddSingleton<TronTransactionWatcher>(sp =>
+    new TronTransactionWatcher(
+        sp.GetRequiredService<ITronBlockStream>(),
+        sp.GetRequiredService<ITronProvider>(),
+        confirmationIntervalMs,
+        TimeSpan.FromMinutes(maxPendingAgeMinutes)));
+builder.Services.AddSingleton<WatcherEventBus>();
+builder.Services.AddHostedService<WatcherBackgroundService>();
 
 var app = builder.Build();
 
@@ -487,6 +511,51 @@ app.MapGet("/api/block/{num}", async (long num, ITronProvider provider) =>
 .WithSummary("依區塊號查詢")
 .WithDescription("查詢指定區塊號的區塊資料");
 
+// ============================================================
+//  Watcher — 交易監聽
+// ============================================================
+
+app.MapPost("/api/watcher/watch/{address}", (string address, TronTransactionWatcher watcher) =>
+{
+    watcher.WatchAddress(address);
+    return Results.Ok(new { Message = $"Watching {address}" });
+})
+.WithTags("Watcher")
+.WithSummary("新增監聽地址")
+.WithDescription("開始監聽該地址的所有入帳和出帳交易");
+
+app.MapPost("/api/watcher/watch", (WatchAddressesRequest req, TronTransactionWatcher watcher) =>
+{
+    watcher.WatchAddresses(req.Addresses);
+    return Results.Ok(new { Message = $"Watching {req.Addresses.Length} addresses" });
+})
+.WithTags("Watcher")
+.WithSummary("批量新增監聽地址");
+
+app.MapDelete("/api/watcher/watch/{address}", (string address, TronTransactionWatcher watcher) =>
+{
+    watcher.UnwatchAddress(address);
+    return Results.Ok(new { Message = $"Unwatched {address}" });
+})
+.WithTags("Watcher")
+.WithSummary("移除監聽地址");
+
+app.MapGet("/api/watcher/events", async (WatcherEventBus bus, HttpContext ctx) =>
+{
+    ctx.Response.ContentType = "text/event-stream";
+    ctx.Response.Headers.CacheControl = "no-cache";
+    ctx.Response.Headers.Connection = "keep-alive";
+
+    await foreach (var evt in bus.ReadAllAsync(ctx.RequestAborted))
+    {
+        await ctx.Response.WriteAsync($"data: {evt}\n\n", ctx.RequestAborted);
+        await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+    }
+})
+.WithTags("Watcher")
+.WithSummary("事件串流（SSE）")
+.WithDescription("Server-Sent Events 即時推送所有 watcher 事件（TRX/TRC20 收發、確認、失敗）。用瀏覽器或 curl 連線即可接收");
+
 app.Run();
 
 // ============================================================
@@ -505,3 +574,80 @@ record Trc20ContractTransferRequest(string PrivateKey, string ContractAddress, s
 record Trc20ApproveRequest(string PrivateKey, string ContractAddress, string SpenderAddress, decimal Amount);
 record Trc20MintRequest(string PrivateKey, string ContractAddress, string ToAddress, decimal Amount);
 record Trc20BurnRequest(string PrivateKey, string ContractAddress, decimal Amount);
+record WatchAddressesRequest(string[] Addresses);
+
+// ============================================================
+//  Watcher Background Service + Event Bus
+// ============================================================
+
+/// <summary>
+/// 廣播 watcher 事件給所有 SSE 連線。
+/// </summary>
+class WatcherEventBus
+{
+    private readonly Channel<string> _channel = Channel.CreateBounded<string>(
+        new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest });
+
+    public void Publish(string json) => _channel.Writer.TryWrite(json);
+
+    public IAsyncEnumerable<string> ReadAllAsync(CancellationToken ct) =>
+        _channel.Reader.ReadAllAsync(ct);
+}
+
+/// <summary>
+/// 啟動 TronTransactionWatcher 並將事件轉發到 EventBus。
+/// </summary>
+class WatcherBackgroundService(
+    TronTransactionWatcher watcher,
+    WatcherEventBus bus,
+    ILogger<WatcherBackgroundService> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        watcher.OnTrxReceived += (_, e) =>
+        {
+            logger.LogInformation("TRX Received: {TxId} {Amount} TRX from {From}", e.TxId, e.Amount, e.FromAddress);
+            bus.Publish(System.Text.Json.JsonSerializer.Serialize(new { Event = "TrxReceived", e.TxId, e.FromAddress, e.ToAddress, e.Amount, e.BlockNumber }));
+        };
+
+        watcher.OnTrxSent += (_, e) =>
+        {
+            logger.LogInformation("TRX Sent: {TxId} {Amount} TRX to {To}", e.TxId, e.Amount, e.ToAddress);
+            bus.Publish(System.Text.Json.JsonSerializer.Serialize(new { Event = "TrxSent", e.TxId, e.FromAddress, e.ToAddress, e.Amount, e.BlockNumber }));
+        };
+
+        watcher.OnTrc20Received += (_, e) =>
+        {
+            logger.LogInformation("TRC20 Received: {TxId} {Amount} {Symbol} from {From}", e.TxId, e.RawAmount, e.Symbol, e.FromAddress);
+            bus.Publish(System.Text.Json.JsonSerializer.Serialize(new { Event = "Trc20Received", e.TxId, e.FromAddress, e.ToAddress, e.ContractAddress, e.Symbol, e.RawAmount, e.Amount, e.BlockNumber }));
+        };
+
+        watcher.OnTrc20Sent += (_, e) =>
+        {
+            logger.LogInformation("TRC20 Sent: {TxId} {Amount} {Symbol} to {To}", e.TxId, e.RawAmount, e.Symbol, e.ToAddress);
+            bus.Publish(System.Text.Json.JsonSerializer.Serialize(new { Event = "Trc20Sent", e.TxId, e.FromAddress, e.ToAddress, e.ContractAddress, e.Symbol, e.RawAmount, e.Amount, e.BlockNumber }));
+        };
+
+        watcher.OnTransactionConfirmed += (_, e) =>
+        {
+            logger.LogInformation("Confirmed: {TxId} at block {Block}", e.TxId, e.BlockNumber);
+            bus.Publish(System.Text.Json.JsonSerializer.Serialize(new { Event = "Confirmed", e.TxId, e.BlockNumber }));
+        };
+
+        watcher.OnTransactionFailed += (_, e) =>
+        {
+            logger.LogWarning("Failed: {TxId} reason={Reason} {Message}", e.TxId, e.Reason, e.Message);
+            bus.Publish(System.Text.Json.JsonSerializer.Serialize(new { Event = "Failed", e.TxId, Reason = e.Reason.ToString(), e.Message, e.BlockNumber }));
+        };
+
+        logger.LogInformation("Watcher started");
+        await watcher.StartAsync(stoppingToken);
+
+        // Keep running until stopped
+        try { await Task.Delay(Timeout.Infinite, stoppingToken); }
+        catch (OperationCanceledException) { }
+
+        await watcher.StopAsync();
+        logger.LogInformation("Watcher stopped");
+    }
+}

@@ -23,6 +23,7 @@
 - `tests/ChainKit.Core.Tests/` — Core 單元測試
 - `tests/ChainKit.Tron.Tests/` — Tron 單元測試 + E2E 測試
 - `contracts/` — Solidity 原始碼和編譯輸出（TRC20 模板）
+- `sandbox/ChainKit.Sandbox/` — Web API 測試介面（Scalar UI），串接所有 SDK API
 
 ## 指令
 
@@ -31,6 +32,8 @@
 - Unit tests: `dotnet test --filter "Category!=Integration"`
 - E2E tests: `dotnet test --filter "Category=Integration"`
 - All tests: `dotnet test`
+- Sandbox: `dotnet run --project sandbox/ChainKit.Sandbox`（Scalar UI: http://localhost:5178/scalar/v1）
+- Coverage: `dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
 
 ### E2E 測試環境變數（可選，有預設值）
 
@@ -45,8 +48,12 @@
 - Token 金額同時提供 RawAmount（永遠正確）+ Amount?（null = 無法轉換）
 - TRX 金額：高階用 decimal TRX，低階用 long Sun（1 TRX = 1,000,000 Sun）
 - 所有金額輸入驗證正數 + overflow 保護
-- IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract
+- 金額計算用 `TronConverter.DecimalPow10`（decimal 迴圈乘法），禁用 `Math.Pow`（double 精度損失）
+- `JsonDocument.Parse` 必須用 `using` dispose（歸還 ArrayPool 記憶體）
+- IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）；IAsyncDisposable：TronTransactionWatcher
 - Thread safe：TokenInfoCache（ConcurrentDictionary）、Trc20Contract（SemaphoreSlim）、Watcher（lock）
+- Watcher 六事件：OnTrx/Trc20 Received/Sent（Unconfirmed）+ OnTransactionConfirmed/Failed（Solidity Node 確認）
+- TronHttpProvider 支援雙端點：`baseUrl`（Full Node）+ `solidityUrl`（Solidity Node，預設同 baseUrl）
 - 新增功能必須有對應測試
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
@@ -59,6 +66,7 @@
 - Solidity 編譯：`npm install -g solc` → `solcjs --bin --abi --optimize`
 - E2E 測試帳戶 bandwidth 會耗盡，測試需要有 graceful degradation（檢測 BANDWITH_ERROR）
 - .NET 內建 SHA3_256 是 NIST SHA3（padding 0x06），不是 Tron/Ethereum 的 Keccak-256（padding 0x01），不能混用
+- 自建節點：HTTP（8090/8091）預設開啟，gRPC（50051/50061）需在 config.conf 的 `node.rpc` 手動開啟
 
 ## 關鍵設計決策
 
@@ -66,15 +74,13 @@
 - Result Pattern（不用 Exception 處理業務錯誤）
 - 三層 Token Info Cache（內建表 → memory cache → 合約呼叫）
 - 交易狀態三態（Unconfirmed/Confirmed/Failed，需 Full Node + Solidity Node）
+- Watcher 雙向監聽 + 三階段生命週期（見 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`）
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`
 
 ## 文件
 
 - `docs/tron-sdk-usage-guide.md` — 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
-- `docs/decisions/001-tron-sdk-architecture.md` — 架構決策紀錄
-- `docs/decisions/002-transaction-status-notfound-removal.md` — 移除 NotFound 狀態的決策
-- `docs/decisions/003-http-provider-dual-endpoint.md` — TronHttpProvider 支援雙端點（自建節點）
-- `docs/decisions/004-failure-reason-alignment.md` — TransactionFailureReason 對齊 protobuf 定義
+- `docs/decisions/` — 架構決策紀錄（ADR 001-005）
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）

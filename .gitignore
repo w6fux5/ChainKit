@@ -21,6 +21,10 @@ Thumbs.db
 .claude/plans/
 .claude/settings.local.json
 
+## Coverage
+coverage-results/
+coverage-report/
+
 ## Misc
 *.stackdump
 /.claude/settings.local.json

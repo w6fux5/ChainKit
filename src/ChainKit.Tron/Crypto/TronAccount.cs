@@ -5,7 +5,7 @@ using NBitcoin;
 
 namespace ChainKit.Tron.Crypto;
 
-public class TronAccount : IAccount
+public class TronAccount : IAccount, IDisposable
 {
     public string Address { get; }
     public string HexAddress { get; }
@@ -18,6 +18,14 @@ public class TronAccount : IAccount
         PublicKey = publicKey;
         HexAddress = hexAddress;
         Address = address;
+    }
+
+    /// <summary>
+    /// Zeroes private key material from memory.
+    /// </summary>
+    public void Dispose()
+    {
+        CryptographicOperations.ZeroMemory(PrivateKey);
     }
 
     public static TronAccount Create()
