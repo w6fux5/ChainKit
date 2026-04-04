@@ -53,7 +53,7 @@
 - IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）；IAsyncDisposable：TronTransactionWatcher
 - Thread safe：TokenInfoCache（ConcurrentDictionary）、Trc20Contract（SemaphoreSlim）、Watcher（lock）
 - Watcher 六事件：OnTrx/Trc20 Received/Sent（Unconfirmed）+ OnTransactionConfirmed/Failed（Solidity Node 確認）
-- TronHttpProvider 支援雙端點：`baseUrl`（Full Node）+ `solidityUrl`（Solidity Node，預設同 baseUrl）
+- TronHttpProvider 支援雙端點：`baseUrl`（Full Node）+ `solidityUrl`（Solidity Node，預設同 baseUrl）。未設定 Solidity Node 時無法正確判斷交易確認狀態（見 ADR 006）
 - 新增功能必須有對應測試
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
@@ -85,4 +85,6 @@
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
 - `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md` — Watcher 生命週期增強設計
+- `docs/tron-sdk-code-review-2026-04-04.md` — Code Review 報告
 - `docs/superpowers/plans/` — 實作計畫（4 份）
+- `sandbox/README.md` — Sandbox 使用說明（啟動、設定、API 對照表、測試流程）
