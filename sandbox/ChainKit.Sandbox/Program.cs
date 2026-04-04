@@ -6,6 +6,7 @@ using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol;
 using ChainKit.Tron.Providers;
 using ChainKit.Tron.Watching;
+using Microsoft.AspNetCore.Mvc;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -93,12 +94,14 @@ app.MapPost("/api/wallet/create", () =>
     return Results.Ok(new
     {
         account.Address,
+        account.HexAddress,
+        PublicKey = Convert.ToHexString(account.PublicKey).ToLowerInvariant(),
         PrivateKey = Convert.ToHexString(account.PrivateKey).ToLowerInvariant()
     });
 })
 .WithTags("Wallet")
 .WithSummary("建立新錢包")
-.WithDescription("隨機產生私鑰，回傳 Base58 地址與私鑰 hex");
+.WithDescription("隨機產生私鑰，回傳 TronAccount 所有屬性");
 
 app.MapPost("/api/wallet/from-mnemonic", (MnemonicRequest req) =>
 {
@@ -106,23 +109,25 @@ app.MapPost("/api/wallet/from-mnemonic", (MnemonicRequest req) =>
     return Results.Ok(new
     {
         account.Address,
+        account.HexAddress,
+        PublicKey = Convert.ToHexString(account.PublicKey).ToLowerInvariant(),
         PrivateKey = Convert.ToHexString(account.PrivateKey).ToLowerInvariant()
     });
 })
 .WithTags("Wallet")
 .WithSummary("從助記詞匯入錢包")
-.WithDescription("BIP39 助記詞 + derivation index，回傳對應的地址與私鑰");
+.WithDescription("BIP39 助記詞 + derivation index，回傳 TronAccount 所有屬性");
 
 app.MapGet("/api/wallet/validate/{address}", (string address) =>
-    Results.Ok(new { Valid = TronAddress.IsValid(address) })
+    Results.Ok(TronAddress.IsValid(address))
 )
 .WithTags("Wallet")
 .WithSummary("驗證地址格式")
-.WithDescription("支援 Base58（T 開頭）和 Hex（41 開頭）格式");
+.WithDescription("回傳 bool，支援 Base58（T 開頭）和 Hex（41 開頭）格式");
 
 app.MapGet("/api/wallet/address/to-base58/{hexAddress}", (string hexAddress) =>
 {
-    try { return Results.Ok(new { Base58 = TronAddress.ToBase58(hexAddress) }); }
+    try { return Results.Ok(TronAddress.ToBase58(hexAddress)); }
     catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
 })
 .WithTags("Wallet")
@@ -130,24 +135,38 @@ app.MapGet("/api/wallet/address/to-base58/{hexAddress}", (string hexAddress) =>
 
 app.MapGet("/api/wallet/address/to-hex/{base58Address}", (string base58Address) =>
 {
-    try { return Results.Ok(new { Hex = TronAddress.ToHex(base58Address) }); }
+    try { return Results.Ok(TronAddress.ToHex(base58Address)); }
     catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
 })
 .WithTags("Wallet")
 .WithSummary("Base58 地址轉 Hex");
 
+app.MapPost("/api/wallet/from-private-key", (PrivateKeyRequest req) =>
+{
+    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    return Results.Ok(new
+    {
+        account.Address,
+        account.HexAddress,
+        PublicKey = Convert.ToHexString(account.PublicKey).ToLowerInvariant()
+    });
+})
+.WithTags("Wallet")
+.WithSummary("從私鑰匯入錢包")
+.WithDescription("回傳 TronAccount 屬性（Address、HexAddress、PublicKey）");
+
 // ============================================================
 //  Account — 帳戶查詢
 // ============================================================
 
-app.MapGet("/api/account/{address}/balance", async (string address, TronClient tron) =>
+app.MapGet("/api/account/{address}/balance", async (string address, [FromQuery] string[]? trc20, TronClient tron) =>
 {
-    var result = await tron.GetBalanceAsync(address);
+    var result = await tron.GetBalanceAsync(address, trc20 ?? []);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("Account")
-.WithSummary("查詢 TRX 餘額")
-.WithDescription("回傳 TRX 餘額，透過 TronClient 高階 API");
+.WithSummary("查詢 TRX 餘額 + TRC20 餘額")
+.WithDescription("回傳 TRX 餘額，可選帶入 trc20 合約地址查詢 TRC20 餘額。例：?trc20=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
 
 app.MapGet("/api/account/{address}/overview", async (string address, TronClient tron) =>
 {
@@ -213,16 +232,6 @@ app.MapPost("/api/transfer/trx", async (TrxTransferRequest req, TronClient tron)
 //  TRC20 — 代幣操作
 // ============================================================
 
-app.MapGet("/api/trc20/{contractAddress}/balance/{ownerAddress}", async (
-    string contractAddress, string ownerAddress, TronClient tron) =>
-{
-    var result = await tron.GetBalanceAsync(ownerAddress, contractAddress);
-    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
-})
-.WithTags("TRC20")
-.WithSummary("查詢 TRC20 餘額（高階）")
-.WithDescription("透過 TronClient 查詢，自動解析代幣小數位");
-
 app.MapPost("/api/trc20/transfer", async (Trc20TransferRequest req, TronClient tron) =>
 {
     var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
@@ -239,7 +248,7 @@ app.MapGet("/api/trc20/{contractAddress}/name", async (
 {
     using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
     var result = await contract.NameAsync();
-    return result.Success ? Results.Ok(new { Name = result.Data }) : Results.BadRequest(result.Error);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
 .WithSummary("代幣名稱（低階）")
@@ -250,7 +259,7 @@ app.MapGet("/api/trc20/{contractAddress}/symbol", async (
 {
     using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
     var result = await contract.SymbolAsync();
-    return result.Success ? Results.Ok(new { Symbol = result.Data }) : Results.BadRequest(result.Error);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
 .WithSummary("代幣符號（低階）")
@@ -261,7 +270,7 @@ app.MapGet("/api/trc20/{contractAddress}/decimals", async (
 {
     using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
     var result = await contract.DecimalsAsync();
-    return result.Success ? Results.Ok(new { Decimals = result.Data }) : Results.BadRequest(result.Error);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
 .WithSummary("代幣小數位（低階）")
@@ -272,7 +281,7 @@ app.MapGet("/api/trc20/{contractAddress}/total-supply", async (
 {
     using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
     var result = await contract.TotalSupplyAsync();
-    return result.Success ? Results.Ok(new { TotalSupply = result.Data }) : Results.BadRequest(result.Error);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
 .WithSummary("代幣總供應量（低階）")
@@ -283,7 +292,7 @@ app.MapGet("/api/trc20/{contractAddress}/balance-of/{ownerAddress}", async (
 {
     using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
     var result = await contract.BalanceOfAsync(ownerAddress);
-    return result.Success ? Results.Ok(new { Balance = result.Data }) : Results.BadRequest(result.Error);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
 .WithSummary("代幣餘額（低階）")
@@ -294,7 +303,7 @@ app.MapGet("/api/trc20/{contractAddress}/allowance/{owner}/{spender}", async (
 {
     using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
     var result = await contract.AllowanceAsync(owner, spender);
-    return result.Success ? Results.Ok(new { Allowance = result.Data }) : Results.BadRequest(result.Error);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
 .WithSummary("授權額度（低階）")
@@ -343,6 +352,17 @@ app.MapPost("/api/trc20/burn", async (Trc20BurnRequest req, ITronProvider provid
 .WithTags("TRC20")
 .WithSummary("銷毀（低階）")
 .WithDescription("呼叫合約 burn(amount)");
+
+app.MapPost("/api/trc20/burn-from", async (Trc20BurnFromRequest req, ITronProvider provider) =>
+{
+    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    using var contract = new Trc20Contract(provider, req.ContractAddress, account);
+    var result = await contract.BurnFromAsync(req.FromAddress, req.Amount);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("TRC20")
+.WithSummary("從指定地址銷毀（低階）")
+.WithDescription("呼叫合約 burnFrom(from, amount)，需要事先 approve");
 
 // ============================================================
 //  Staking — 質押與資源委託（Stake 2.0）
@@ -413,10 +433,21 @@ app.MapGet("/api/staking/delegation/{fromAddress}/to/{toAddress}", async (
 //  Contract — 智能合約
 // ============================================================
 
+app.MapPost("/api/contract/deploy", async (DeployContractRequest req, TronClient tron) =>
+{
+    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    var bytecode = Convert.FromHexString(req.Bytecode);
+    var result = await tron.DeployContractAsync(account, bytecode, req.Abi, req.FeeLimit);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("Contract")
+.WithSummary("部署合約（通用）")
+.WithDescription("部署任意智能合約，需提供 bytecode 和 ABI");
+
 app.MapPost("/api/contract/deploy-trc20", async (DeployTrc20Request req, TronClient tron) =>
 {
     var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    var options = new Trc20TokenOptions(req.Name, req.Symbol, req.Decimals, req.TotalSupply);
+    var options = new Trc20TokenOptions(req.Name, req.Symbol, req.Decimals, req.InitialSupply, req.Mintable, req.Burnable);
     var result = await tron.DeployTrc20TokenAsync(account, options);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -433,7 +464,7 @@ app.MapPost("/api/contract/call", async (ContractCallRequest req, ITronProvider 
             : Convert.FromHexString(req.Parameter);
         var result = await provider.TriggerConstantContractAsync(
             req.OwnerAddress, req.ContractAddress, req.FunctionSelector, param);
-        return Results.Ok(new { Result = Convert.ToHexString(result).ToLowerInvariant() });
+        return Results.Ok(Convert.ToHexString(result).ToLowerInvariant());
     }
     catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
 })
@@ -450,7 +481,7 @@ app.MapPost("/api/contract/estimate-energy", async (ContractCallRequest req, ITr
             : Convert.FromHexString(req.Parameter);
         var energy = await provider.EstimateEnergyAsync(
             req.OwnerAddress, req.ContractAddress, req.FunctionSelector, param);
-        return Results.Ok(new { Energy = energy });
+        return Results.Ok(energy);
     }
     catch (Exception ex) { return Results.BadRequest(new { Error = ex.Message }); }
 })
@@ -563,17 +594,20 @@ app.Run();
 // ============================================================
 
 record TrxTransferRequest(string PrivateKey, string ToAddress, decimal Amount);
-record Trc20TransferRequest(string PrivateKey, string ContractAddress, string ToAddress, decimal Amount, int Decimals = 6);
+record Trc20TransferRequest(string PrivateKey, string ContractAddress, string ToAddress, decimal Amount, int Decimals);
 record StakeRequest(string PrivateKey, decimal TrxAmount, ResourceType Resource);
 record DelegateRequest(string PrivateKey, string ReceiverAddress, decimal TrxAmount, ResourceType Resource, bool LockPeriod = false);
 record UndelegateRequest(string PrivateKey, string ReceiverAddress, decimal TrxAmount, ResourceType Resource);
-record DeployTrc20Request(string PrivateKey, string Name, string Symbol, byte Decimals, long TotalSupply);
+record DeployTrc20Request(string PrivateKey, string Name, string Symbol, byte Decimals, long InitialSupply, bool Mintable = true, bool Burnable = true);
 record MnemonicRequest(string Mnemonic, int Index = 0);
 record ContractCallRequest(string OwnerAddress, string ContractAddress, string FunctionSelector, string? Parameter = null);
 record Trc20ContractTransferRequest(string PrivateKey, string ContractAddress, string ToAddress, decimal Amount);
 record Trc20ApproveRequest(string PrivateKey, string ContractAddress, string SpenderAddress, decimal Amount);
 record Trc20MintRequest(string PrivateKey, string ContractAddress, string ToAddress, decimal Amount);
 record Trc20BurnRequest(string PrivateKey, string ContractAddress, decimal Amount);
+record Trc20BurnFromRequest(string PrivateKey, string ContractAddress, string FromAddress, decimal Amount);
+record PrivateKeyRequest(string PrivateKey);
+record DeployContractRequest(string PrivateKey, string Bytecode, string Abi, long FeeLimit = 100_000_000);
 record WatchAddressesRequest(string[] Addresses);
 
 // ============================================================
