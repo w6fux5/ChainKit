@@ -39,7 +39,17 @@ public static class TronConverter
     public static BigInteger ToRawAmount(decimal amount, int decimals)
     {
         if (decimals <= 0) return new BigInteger(amount);
-        var multiplier = (decimal)Math.Pow(10, decimals);
+        var multiplier = DecimalPow10(decimals);
         return new BigInteger(amount * multiplier);
+    }
+
+    /// <summary>
+    /// Computes 10^exp using decimal multiplication to avoid double precision loss from Math.Pow.
+    /// </summary>
+    internal static decimal DecimalPow10(int exp)
+    {
+        var result = 1m;
+        for (int i = 0; i < exp; i++) result *= 10;
+        return result;
     }
 }

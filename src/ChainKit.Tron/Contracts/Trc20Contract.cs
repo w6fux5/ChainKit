@@ -288,7 +288,7 @@ public class Trc20Contract : IDisposable
 
     private static BigInteger ToRawAmount(decimal amount, byte decimals)
     {
-        var multiplier = (decimal)Math.Pow(10, decimals);
+        var multiplier = TronConverter.DecimalPow10(decimals);
         return new BigInteger(amount * multiplier);
     }
 

@@ -53,11 +53,14 @@ public class TronHttpProvider : ITronProvider, IDisposable
     public TronHttpProvider(TronNetworkConfig network, string? apiKey = null)
         : this(network.HttpEndpoint, solidityUrl: null, apiKey) { }
 
-    internal TronHttpProvider(HttpClient httpClient, string baseUrl)
+    /// <summary>
+    /// Creates a provider with an externally-managed HttpClient.
+    /// </summary>
+    public TronHttpProvider(HttpClient httpClient, string baseUrl, string? solidityUrl = null)
     {
         _httpClient = httpClient;
         _baseUrl = baseUrl.TrimEnd('/');
-        _solidityUrl = baseUrl.TrimEnd('/');
+        _solidityUrl = (solidityUrl ?? baseUrl).TrimEnd('/');
         _ownsHttpClient = false;
     }
 
@@ -69,7 +72,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         var json = await PostAsync("/wallet/getaccount",
             new { address = hexAddress, visible = false }, ct);
 
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         var addr = root.TryGetProperty("address", out var addrEl) ? addrEl.GetString() ?? "" : hexAddress;
         var balance = root.TryGetProperty("balance", out var balEl) ? balEl.GetInt64() : 0;
@@ -133,7 +137,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         var json = await PostAsync("/wallet/broadcasthex",
             new { transaction = hexTransaction }, ct);
 
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
         var success = root.TryGetProperty("result", out var resEl) && resEl.GetBoolean();
         var txId = root.TryGetProperty("txid", out var txIdEl) ? txIdEl.GetString() : null;
         txId ??= root.TryGetProperty("txID", out var txIdEl2) ? txIdEl2.GetString() : null;
@@ -188,7 +193,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         };
 
         var json = await PostAsync("/wallet/triggersmartcontract", body, ct);
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         if (root.TryGetProperty("transaction", out var txEl))
         {
@@ -236,7 +242,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         };
 
         var json = await PostAsync("/wallet/triggerconstantcontract", body, ct);
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         if (root.TryGetProperty("constant_result", out var resultArray)
             && resultArray.GetArrayLength() > 0)
@@ -261,7 +268,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         var json = await PostAsync("/wallet/getaccountresource",
             new { address = hexAddress, visible = false }, ct);
 
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         long GetLong(string name) =>
             root.TryGetProperty(name, out var el) ? el.GetInt64() : 0;
@@ -294,7 +302,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         };
 
         var json = await PostAsync("/wallet/estimateenergy", body, ct);
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         if (root.TryGetProperty("energy_required", out var energyEl))
             return energyEl.GetInt64();
@@ -307,7 +316,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
     {
         var hexAddress = NormalizeToHex(address);
         var json = await GetAsync($"/v1/accounts/{hexAddress}/transactions?limit={limit}", ct);
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         var results = new List<TransactionInfoDto>();
         if (root.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Array)
@@ -375,7 +385,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         var json = await PostAsync("/wallet/getdelegatedresourceaccountindexV2",
             new { value = hexAddress, visible = false }, ct);
 
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         var toAddresses = new List<string>();
         var fromAddresses = new List<string>();
@@ -411,7 +422,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
         var json = await PostAsync("/wallet/getdelegatedresourceV2",
             new { fromAddress = hexFrom, toAddress = hexTo, visible = false }, ct);
 
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
         var results = new List<DelegatedResourceInfo>();
 
         if (root.TryGetProperty("delegatedResource", out var drEl) && drEl.ValueKind == JsonValueKind.Array)
@@ -474,7 +486,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
 
     private static BlockInfo ParseBlockInfo(string json)
     {
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         long blockNumber = 0;
         string blockId = "";
@@ -563,7 +576,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
 
     private static TransactionInfoDto ParseTransactionInfoFromTx(string json, string txId)
     {
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         var id = root.TryGetProperty("txID", out var idEl) ? idEl.GetString() ?? txId : txId;
         // gettransactionbyid doesn't return block/fee info; those come from gettransactioninfobyid
@@ -613,7 +627,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
 
     private static TransactionInfoDto ParseTransactionInfo(string json, string txId)
     {
-        var root = JsonDocument.Parse(json).RootElement;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
         var id = root.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? txId : txId;
         var blockNum = root.TryGetProperty("blockNumber", out var bnEl) ? bnEl.GetInt64() : 0;

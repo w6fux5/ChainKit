@@ -166,7 +166,7 @@ public class TronTransactionWatcher : IAsyncDisposable
                     symbol = tokenInfo.Symbol;
                     decimals = tokenInfo.Decimals;
                     if (tokenInfo.Decimals > 0)
-                        convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                        convertedAmount = trc20Info.Amount / TronConverter.DecimalPow10(tokenInfo.Decimals);
                 }
                 catch
                 {
@@ -177,7 +177,7 @@ public class TronTransactionWatcher : IAsyncDisposable
                         symbol = tokenInfo.Symbol;
                         decimals = tokenInfo.Decimals;
                         if (tokenInfo.Decimals > 0)
-                            convertedAmount = trc20Info.Amount / (decimal)Math.Pow(10, tokenInfo.Decimals);
+                            convertedAmount = trc20Info.Amount / TronConverter.DecimalPow10(tokenInfo.Decimals);
                     }
                 }
             }

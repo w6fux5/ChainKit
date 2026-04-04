@@ -4,6 +4,7 @@ public enum TronErrorCode
 {
     Unknown,
     InvalidAddress,
+    InvalidAmount,
     InsufficientBalance,
     InsufficientEnergy,
     InsufficientBandwidth,

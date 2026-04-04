@@ -36,13 +36,13 @@ public class TronClient : IDisposable
         TronAccount from, string toAddress, decimal trxAmount, CancellationToken ct = default)
     {
         if (trxAmount <= 0)
-            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
 
         try
         {
             long amountSun;
             try { amountSun = checked((long)(trxAmount * SunPerTrx)); }
-            catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
+            catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
             var toHex = ResolveHexAddress(toAddress);
 
             var block = await Provider.GetNowBlockAsync(ct);
@@ -84,17 +84,17 @@ public class TronClient : IDisposable
         string toAddress, decimal amount, int decimals, CancellationToken ct = default)
     {
         if (amount <= 0)
-            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         if (decimals < 0 || decimals > 77)
-            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Invalid decimals value");
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Invalid decimals value");
 
         try
         {
             var toHex = ResolveHexAddress(toAddress);
             var contractHex = ResolveHexAddress(contractAddress);
             BigInteger rawAmount;
-            try { rawAmount = new BigInteger(amount * (decimal)Math.Pow(10, decimals)); }
-            catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
+            try { rawAmount = new BigInteger(amount * TronConverter.DecimalPow10(decimals)); }
+            catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
             var data = AbiEncoder.EncodeTransfer(toHex, rawAmount);
 
             // Use TriggerSmartContractAsync to get the transaction from the node.
@@ -214,7 +214,7 @@ public class TronClient : IDisposable
                 var tokenInfo = await TokenCache.GetOrResolveAsync(contractAddr, Provider, ct);
                 var rawAmountDecimal = (decimal)rawAmount;
                 decimal? convertedAmount = tokenInfo.Decimals > 0
-                    ? rawAmountDecimal / (decimal)Math.Pow(10, tokenInfo.Decimals)
+                    ? rawAmountDecimal / TronConverter.DecimalPow10(tokenInfo.Decimals)
                     : null;
                 amount = convertedAmount ?? rawAmountDecimal;
 
@@ -294,7 +294,7 @@ public class TronClient : IDisposable
                     var tokenInfo = await TokenCache.GetOrResolveAsync(contractHex, Provider, ct);
                     var rawBalanceDecimal = (decimal)rawBalance;
                     decimal? convertedBalance = tokenInfo.Decimals > 0
-                        ? rawBalanceDecimal / (decimal)Math.Pow(10, tokenInfo.Decimals)
+                        ? rawBalanceDecimal / TronConverter.DecimalPow10(tokenInfo.Decimals)
                         : null;
                     trc20Balances[contract] = new Trc20BalanceInfo(rawBalanceDecimal, convertedBalance, tokenInfo.Symbol, tokenInfo.Decimals);
                 }
@@ -407,13 +407,13 @@ public class TronClient : IDisposable
         TronAccount account, decimal trxAmount, ResourceType resource, CancellationToken ct = default)
     {
         if (trxAmount <= 0)
-            return TronResult<StakeResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+            return TronResult<StakeResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
 
         try
         {
             long amountSun;
             try { amountSun = checked((long)(trxAmount * SunPerTrx)); }
-            catch (OverflowException) { return TronResult<StakeResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
+            catch (OverflowException) { return TronResult<StakeResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
             var resourceCode = MapResourceType(resource);
 
             var block = await Provider.GetNowBlockAsync(ct);
@@ -453,13 +453,13 @@ public class TronClient : IDisposable
         TronAccount account, decimal trxAmount, ResourceType resource, CancellationToken ct = default)
     {
         if (trxAmount <= 0)
-            return TronResult<UnstakeResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+            return TronResult<UnstakeResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
 
         try
         {
             long amountSun;
             try { amountSun = checked((long)(trxAmount * SunPerTrx)); }
-            catch (OverflowException) { return TronResult<UnstakeResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
+            catch (OverflowException) { return TronResult<UnstakeResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
             var resourceCode = MapResourceType(resource);
 
             var block = await Provider.GetNowBlockAsync(ct);
@@ -501,13 +501,13 @@ public class TronClient : IDisposable
         bool lockPeriod = false, CancellationToken ct = default)
     {
         if (trxAmount <= 0)
-            return TronResult<DelegateResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+            return TronResult<DelegateResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
 
         try
         {
             long amountSun;
             try { amountSun = checked((long)(trxAmount * SunPerTrx)); }
-            catch (OverflowException) { return TronResult<DelegateResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
+            catch (OverflowException) { return TronResult<DelegateResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
             var receiverHex = ResolveHexAddress(receiverAddress);
             var resourceCode = MapResourceType(resource);
 
@@ -549,13 +549,13 @@ public class TronClient : IDisposable
         decimal trxAmount, ResourceType resource, CancellationToken ct = default)
     {
         if (trxAmount <= 0)
-            return TronResult<UndelegateResult>.Fail(TronErrorCode.InvalidAddress, "Amount must be positive");
+            return TronResult<UndelegateResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
 
         try
         {
             long amountSun;
             try { amountSun = checked((long)(trxAmount * SunPerTrx)); }
-            catch (OverflowException) { return TronResult<UndelegateResult>.Fail(TronErrorCode.InvalidAddress, "Amount too large"); }
+            catch (OverflowException) { return TronResult<UndelegateResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
             var receiverHex = ResolveHexAddress(receiverAddress);
             var resourceCode = MapResourceType(resource);
 
