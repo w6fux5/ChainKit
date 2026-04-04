@@ -36,7 +36,9 @@ public record TransactionInfoDto(
     string ContractType = "", string OwnerAddress = "", string ToAddress = "",
     long AmountSun = 0, string? ContractAddress = null, string? ContractData = null,
     // Resource TRX costs in Sun (populated by GetTransactionInfoByIdAsync from receipt)
-    long EnergyFee = 0, long NetFee = 0);
+    long EnergyFee = 0, long NetFee = 0,
+    // Contract execution result from receipt (e.g. "SUCCESS", "REVERT", "OUT_OF_ENERGY")
+    string ReceiptResult = "");
 public record AccountResourceInfo(long FreeBandwidthLimit, long FreeBandwidthUsed, long EnergyLimit, long EnergyUsed, long TotalBandwidthLimit, long TotalBandwidthUsed);
 
 // Delegation DTOs (used by ITronProvider)
