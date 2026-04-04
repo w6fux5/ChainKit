@@ -555,6 +555,123 @@ public class TronTransactionWatcherTests
         Assert.Equal(1, confirmedCount);
     }
 
+    // --- Failure and Expiry detection tests ---
+
+    [Fact]
+    public async Task ConfirmationTracker_Trc20Revert_FiresFailed()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var contractAddr = "41" + new string('e', 40);
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, 1_000_000, "revert_tx");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("revert_tx", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("revert_tx", 1, ts, "", 0, 0, 0,
+                ReceiptResult: "REVERT"));
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var tcs = new TaskCompletionSource<TransactionFailedEventArgs>();
+        watcher.OnTransactionFailed += (_, e) => tcs.TrySetResult(e);
+
+        var confirmedFired = false;
+        watcher.OnTransactionConfirmed += (_, _) => confirmedFired = true;
+
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+
+        var failed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("revert_tx", failed.TxId);
+        Assert.Equal(TransactionFailureReason.ContractReverted, failed.Reason);
+        Assert.False(confirmedFired);
+    }
+
+    [Fact]
+    public async Task ConfirmationTracker_Trc20OutOfEnergy_FiresFailed()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var contractAddr = "41" + new string('e', 40);
+        var tx = MakeTrc20TxWithData(OtherAddr, contractAddr, WatchedAddr, 1_000_000, "oom_tx");
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("oom_tx", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("oom_tx", 1, ts, "", 0, 0, 0,
+                ReceiptResult: "OUT_OF_ENERGY"));
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var tcs = new TaskCompletionSource<TransactionFailedEventArgs>();
+        watcher.OnTransactionFailed += (_, e) => tcs.TrySetResult(e);
+
+        watcher.WatchAddress(contractAddr);
+        await watcher.StartAsync();
+
+        var failed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(TransactionFailureReason.OutOfEnergy, failed.Reason);
+    }
+
+    [Fact]
+    public async Task ConfirmationTracker_TrxTransfer_AlwaysConfirms()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0, ReceiptResult: "DEFAULT"));
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50);
+
+        var tcs = new TaskCompletionSource<TransactionConfirmedEventArgs>();
+        watcher.OnTransactionConfirmed += (_, e) => tcs.TrySetResult(e);
+
+        var failedFired = false;
+        watcher.OnTransactionFailed += (_, _) => failedFired = true;
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+
+        var confirmed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("tx1", confirmed.TxId);
+        Assert.False(failedFired);
+    }
+
+    [Fact]
+    public async Task ConfirmationTracker_Expired_FiresFailed()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        var tx = MakeTrxTxWithAmount(OtherAddr, WatchedAddr, 10_000_000);
+        var block = MakeBlock(1, tx);
+        var stream = new MockBlockStream(block);
+
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
+
+        await using var watcher = new TronTransactionWatcher(stream, provider,
+            confirmationIntervalMs: 50,
+            maxPendingAge: TimeSpan.FromMilliseconds(200));
+
+        var tcs = new TaskCompletionSource<TransactionFailedEventArgs>();
+        watcher.OnTransactionFailed += (_, e) => tcs.TrySetResult(e);
+
+        watcher.WatchAddress(WatchedAddr);
+        await watcher.StartAsync();
+
+        var failed = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("tx1", failed.TxId);
+        Assert.Equal(TransactionFailureReason.Expired, failed.Reason);
+        Assert.Equal(1, failed.BlockNumber);
+    }
+
     /// <summary>
     /// Builds an ABI-encoded string return value (offset + length + data padded to 32 bytes).
     /// </summary>
