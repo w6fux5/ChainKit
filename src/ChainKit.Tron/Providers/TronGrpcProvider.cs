@@ -668,12 +668,25 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         long netUsage = 0;
         long energyFee = 0;
         long netFee = 0;
+        var receiptResult = "";
         if (receiptBytes.Length > 0)
         {
             energyUsage = ParseVarintField(receiptBytes, 1);
             netUsage = ParseVarintField(receiptBytes, 4);
             energyFee = ParseVarintField(receiptBytes, 2);
             netFee = ParseVarintField(receiptBytes, 6);
+            // Field 7 = contractResult enum (varint)
+            var resultCode = (int)ParseVarintField(receiptBytes, 7);
+            receiptResult = resultCode switch
+            {
+                0 => "DEFAULT",
+                1 => "SUCCESS",
+                2 => "REVERT",
+                10 => "OUT_OF_ENERGY",
+                11 => "OUT_OF_TIME",
+                14 => "TRANSFER_FAILED",
+                _ => resultCode > 1 ? "FAILED" : ""
+            };
         }
 
         var contractResults = ParseRepeatedBytesField(data, 9);
@@ -682,7 +695,7 @@ public class TronGrpcProvider : ITronProvider, IDisposable
             : "";
 
         return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energyUsage, netUsage,
-            EnergyFee: energyFee, NetFee: netFee);
+            EnergyFee: energyFee, NetFee: netFee, ReceiptResult: receiptResult);
     }
 
     private static Transaction ParseTransactionFromExtention(byte[] data, long feeLimit)

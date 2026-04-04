@@ -601,8 +601,10 @@ public class TronHttpProvider : ITronProvider, IDisposable
         var blockTs = root.TryGetProperty("blockTimeStamp", out var btsEl) ? btsEl.GetInt64() : 0;
         var fee = root.TryGetProperty("fee", out var feeEl) ? feeEl.GetInt64() : 0;
         long energy = 0, net = 0, energyFee = 0, netFee = 0;
+        var receiptResult = "";
         if (root.TryGetProperty("receipt", out var rcEl))
         {
+            receiptResult = rcEl.TryGetProperty("result", out var rrEl) ? rrEl.GetString() ?? "" : "";
             energy = rcEl.TryGetProperty("energy_usage_total", out var euEl) ? euEl.GetInt64() : 0;
             net = rcEl.TryGetProperty("net_usage", out var nuEl) ? nuEl.GetInt64() : 0;
             energyFee = rcEl.TryGetProperty("energy_fee", out var efEl) ? efEl.GetInt64() : 0;
@@ -617,7 +619,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
             ? caEl.GetString() : null;
 
         return new TransactionInfoDto(id, blockNum, blockTs, contractResult, fee, energy, net,
-            ContractAddress: contractAddress, EnergyFee: energyFee, NetFee: netFee);
+            ContractAddress: contractAddress, EnergyFee: energyFee, NetFee: netFee,
+            ReceiptResult: receiptResult);
     }
 
     private static bool IsHexString(string s) =>
