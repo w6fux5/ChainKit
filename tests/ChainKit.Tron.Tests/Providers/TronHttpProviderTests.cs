@@ -426,6 +426,44 @@ public class TronHttpProviderTests
         Assert.Equal(0, info.NetUsage);
     }
 
+    [Fact]
+    public async Task GetTransactionInfoByIdAsync_EmptyObject_ReturnsTxIdEmpty()
+    {
+        // Solidity Node 回傳 {} 代表交易未確認
+        var handler = MockJson("{}");
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionInfoByIdAsync("some_tx_id");
+
+        Assert.Equal("", info.TxId);
+        Assert.Equal(0, info.BlockNumber);
+    }
+
+    [Fact]
+    public async Task GetTransactionInfoByIdAsync_WithReceiptResult_ParsesReceiptResult()
+    {
+        var responseJson = """
+        {
+            "id": "smart_contract_tx",
+            "blockNumber": 60000,
+            "blockTimeStamp": 1700000000000,
+            "fee": 5000000,
+            "receipt": {
+                "result": "OUT_OF_ENERGY",
+                "energy_usage_total": 100000
+            },
+            "contractResult": [""]
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var info = await provider.GetTransactionInfoByIdAsync("smart_contract_tx");
+
+        Assert.Equal("OUT_OF_ENERGY", info.ReceiptResult);
+    }
+
     // --- TriggerConstantContractAsync ---
 
     [Fact]

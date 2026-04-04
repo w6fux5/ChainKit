@@ -168,9 +168,10 @@ public class TronClient : IDisposable
             FailureInfo? failure = null;
             if (status == TransactionStatus.Failed)
             {
+                var failureSource = solidityInfo?.ReceiptResult ?? txInfo.ContractResult ?? "Unknown failure";
                 failure = new FailureInfo(
-                    ParseFailureReason(txInfo.ContractResult),
-                    txInfo.ContractResult ?? "Unknown failure",
+                    ParseFailureReason(failureSource),
+                    failureSource,
                     null, txInfo.ContractResult);
             }
 
@@ -888,8 +889,10 @@ public class TronClient : IDisposable
         if (solidityInfo is null || string.IsNullOrEmpty(solidityInfo.TxId))
             return TransactionStatus.Unconfirmed;
 
-        if (!string.IsNullOrEmpty(solidityInfo.ContractResult) &&
-            solidityInfo.ContractResult.Contains("FAIL", StringComparison.OrdinalIgnoreCase))
+        // Smart Contract 交易：receipt.result 必須為 SUCCESS 才算確認成功
+        // REVERT、OUT_OF_ENERGY 等都是失敗
+        if (!string.IsNullOrEmpty(solidityInfo.ReceiptResult) &&
+            !solidityInfo.ReceiptResult.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
             return TransactionStatus.Failed;
 
         return TransactionStatus.Confirmed;

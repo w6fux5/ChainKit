@@ -418,21 +418,98 @@ public class TronClientTests
     }
 
     [Fact]
-    public async Task GetTransactionDetailAsync_Failed_HasFailureInfo()
+    public async Task GetTransactionDetailAsync_Unconfirmed_WhenSolidityReturnsEmptyTxId()
     {
-        var txId = "failed_tx";
+        // 真實場景：Solidity Node 回傳空物件 {}，ParseTransactionInfo 解析後 TxId 為空
+        var txId = "pending_tx";
 
         _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
-            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "FAILED", 0, 0, 0));
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0));
+
+        // 模擬 Solidity Node 回傳空物件：TxId 為空，代表交易尚未 solidified
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionStatus.Unconfirmed, result.Data!.Status);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_SmartContract_Revert_ReturnsFailed()
+    {
+        var txId = "revert_tx";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
+                ContractType: "TriggerSmartContract"));
 
         _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
-            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "FAILED", 500, 0, 0));
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 100000, 0,
+                ReceiptResult: "REVERT"));
 
         var result = await _client.GetTransactionDetailAsync(txId);
 
         Assert.True(result.Success);
         Assert.Equal(TransactionStatus.Failed, result.Data!.Status);
-        Assert.NotNull(result.Data.Failure);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_SmartContract_OutOfEnergy_ReturnsFailed()
+    {
+        var txId = "oom_tx";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
+                ContractType: "TriggerSmartContract"));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 100000, 0,
+                ReceiptResult: "OUT_OF_ENERGY"));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionStatus.Failed, result.Data!.Status);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_SmartContract_Success_ReturnsConfirmed()
+    {
+        var txId = "success_tx";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
+                ContractType: "TriggerSmartContract"));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 50000, 0,
+                ReceiptResult: "SUCCESS"));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionStatus.Confirmed, result.Data!.Status);
+    }
+
+    [Fact]
+    public async Task GetTransactionDetailAsync_SystemContract_NoReceipt_ReturnsConfirmed()
+    {
+        // System Contract（TRX 轉帳）沒有 receipt.result，查到就是 Confirmed
+        var txId = "trx_transfer_tx";
+
+        _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
+                ContractType: "TransferContract"));
+
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+            .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 267));
+
+        var result = await _client.GetTransactionDetailAsync(txId);
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionStatus.Confirmed, result.Data!.Status);
     }
 
     [Fact]

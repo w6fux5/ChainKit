@@ -579,7 +579,7 @@ public class TronHttpProvider : ITronProvider, IDisposable
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var id = root.TryGetProperty("txID", out var idEl) ? idEl.GetString() ?? txId : txId;
+        var id = root.TryGetProperty("txID", out var idEl) ? idEl.GetString() ?? "" : "";
         // gettransactionbyid doesn't return block/fee info; those come from gettransactioninfobyid
         var contractResult = "";
         if (root.TryGetProperty("ret", out var retEl) && retEl.GetArrayLength() > 0)
@@ -630,7 +630,7 @@ public class TronHttpProvider : ITronProvider, IDisposable
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var id = root.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? txId : txId;
+        var id = root.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
         var blockNum = root.TryGetProperty("blockNumber", out var bnEl) ? bnEl.GetInt64() : 0;
         var blockTs = root.TryGetProperty("blockTimeStamp", out var btsEl) ? btsEl.GetInt64() : 0;
         var fee = root.TryGetProperty("fee", out var feeEl) ? feeEl.GetInt64() : 0;

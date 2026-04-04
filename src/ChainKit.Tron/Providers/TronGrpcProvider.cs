@@ -258,7 +258,10 @@ public class TronGrpcProvider : ITronProvider, IDisposable
             }
         }
 
-        return new TransactionInfoDto(txId, 0, 0, contractResult, 0, 0, 0,
+        // gRPC Transaction protobuf 沒有 txID 欄位（txID 是 raw_data 的 SHA256 hash）
+        // 有交易資料時用呼叫端的 txId（因為就是用它查的），空回應時回傳空字串
+        var resolvedTxId = tx.RawData?.Contract.Count > 0 ? txId : "";
+        return new TransactionInfoDto(resolvedTxId, 0, 0, contractResult, 0, 0, 0,
             contractType, ownerAddress, toAddress, amountSun, contractAddress, contractData);
     }
 
@@ -650,12 +653,12 @@ public class TronGrpcProvider : ITronProvider, IDisposable
     private static TransactionInfoDto ParseTransactionInfo(byte[] data, string txId)
     {
         if (data.Length == 0)
-            return new TransactionInfoDto(txId, 0, 0, "", 0, 0, 0);
+            return new TransactionInfoDto("", 0, 0, "", 0, 0, 0);
 
         // TransactionInfo: field 1 (bytes id), field 2 (int64 fee), field 3 (int64 blockNumber),
         //   field 4 (int64 blockTimeStamp), field 8 (ResourceReceipt), field 9 (repeated bytes contractResult)
         var idBytes = ParseBytesField(data, 1);
-        var id = idBytes.Length > 0 ? Convert.ToHexString(idBytes).ToLowerInvariant() : txId;
+        var id = idBytes.Length > 0 ? Convert.ToHexString(idBytes).ToLowerInvariant() : "";
         var fee = ParseVarintField(data, 2);
         var blockNum = ParseVarintField(data, 3);
         var blockTs = ParseVarintField(data, 4);
