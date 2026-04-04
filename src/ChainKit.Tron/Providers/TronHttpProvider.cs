@@ -12,6 +12,7 @@ public class TronHttpProvider : ITronProvider, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
+    private readonly string _solidityUrl;
     private readonly bool _ownsHttpClient;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -33,9 +34,16 @@ public class TronHttpProvider : ITronProvider, IDisposable
     private static readonly JsonFormatter ProtoJsonFormatter = new(
         new JsonFormatter.Settings(false).WithTypeRegistry(TronTypeRegistry));
 
-    public TronHttpProvider(string baseUrl, string? apiKey = null)
+    /// <summary>
+    /// Creates a provider with separate Full Node and Solidity Node endpoints.
+    /// </summary>
+    /// <param name="baseUrl">Full Node HTTP endpoint (e.g. http://your-server:8090).</param>
+    /// <param name="solidityUrl">Solidity Node HTTP endpoint (e.g. http://your-server:8091). If null, uses baseUrl (TronGrid compatible).</param>
+    /// <param name="apiKey">Optional TronGrid API key.</param>
+    public TronHttpProvider(string baseUrl, string? solidityUrl = null, string? apiKey = null)
     {
         _baseUrl = baseUrl.TrimEnd('/');
+        _solidityUrl = (solidityUrl ?? baseUrl).TrimEnd('/');
         _httpClient = new HttpClient();
         _ownsHttpClient = true;
         if (apiKey != null)
@@ -43,12 +51,13 @@ public class TronHttpProvider : ITronProvider, IDisposable
     }
 
     public TronHttpProvider(TronNetworkConfig network, string? apiKey = null)
-        : this(network.HttpEndpoint, apiKey) { }
+        : this(network.HttpEndpoint, solidityUrl: null, apiKey) { }
 
     internal TronHttpProvider(HttpClient httpClient, string baseUrl)
     {
         _httpClient = httpClient;
         _baseUrl = baseUrl.TrimEnd('/');
+        _solidityUrl = baseUrl.TrimEnd('/');
         _ownsHttpClient = false;
     }
 
@@ -153,7 +162,7 @@ public class TronHttpProvider : ITronProvider, IDisposable
 
     public async Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default)
     {
-        var json = await PostAsync("/walletsolidity/gettransactioninfobyid", new { value = txId }, ct);
+        var json = await PostSolidityAsync("/walletsolidity/gettransactioninfobyid", new { value = txId }, ct);
         return ParseTransactionInfo(json, txId);
     }
 
@@ -439,6 +448,16 @@ public class TronHttpProvider : ITronProvider, IDisposable
     private async Task<string> PostRawAsync(string path, string jsonBody, CancellationToken ct)
     {
         var url = _baseUrl + path;
+        using var content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync(url, content, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(ct);
+    }
+
+    private async Task<string> PostSolidityAsync(string path, object body, CancellationToken ct)
+    {
+        var jsonBody = JsonSerializer.Serialize(body, JsonOptions);
+        var url = _solidityUrl + path;
         using var content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync(url, content, ct);
         response.EnsureSuccessStatusCode();

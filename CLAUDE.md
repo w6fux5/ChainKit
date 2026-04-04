@@ -73,7 +73,10 @@
 - `docs/tron-sdk-usage-guide.md` — 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
 - `docs/decisions/001-tron-sdk-architecture.md` — 架構決策紀錄
 - `docs/decisions/002-transaction-status-notfound-removal.md` — 移除 NotFound 狀態的決策
+- `docs/decisions/003-http-provider-dual-endpoint.md` — TronHttpProvider 支援雙端點（自建節點）
+- `docs/decisions/004-failure-reason-alignment.md` — TransactionFailureReason 對齊 protobuf 定義
 - `docs/tron-sdk-development-summary.md` — 開發總結
-- `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 限制）
-- `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（與實作同步）
-- `docs/superpowers/plans/` — 實作計畫（3 份）
+- `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
+- `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
+- `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md` — Watcher 生命週期增強設計
+- `docs/superpowers/plans/` — 實作計畫（4 份）

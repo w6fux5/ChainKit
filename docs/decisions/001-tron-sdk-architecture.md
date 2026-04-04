@@ -48,7 +48,7 @@
 
 - `getTransactionById`（Full Node）→ 交易本體
 - `getTransactionInfoById`（Solidity Node）→ 回執（status、fee、energy、event log）
-- 四態：NotFound / Unconfirmed / Confirmed / Failed
+- 三態：Unconfirmed / Confirmed / Failed（NotFound 已移除，見 002 決策）
 
 **原因：** Tron 的確認機制需要兩個 API 配合。HTTP Provider 透過同一個 URL 存取兩者。gRPC Provider 的 Solidity endpoint 為 optional。
 

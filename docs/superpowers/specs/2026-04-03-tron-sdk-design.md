@@ -1,5 +1,9 @@
 # ChainKit Tron SDK 設計文件
 
+> **注意：** 此為實作前的設計規格，部分內容已與實作不同。主要差異：
+> - `TransactionStatus.NotFound` 已移除（見 `docs/decisions/002-transaction-status-notfound-removal.md`）
+> - Watcher 已增強為雙向監聽 + 三階段生命週期（見 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`）
+
 ## 概述
 
 ChainKit 是多鏈 SDK 解決方案，供內部系統使用。各系統根據需要的區塊鏈安裝對應套件。Tron 是第一條支援的鏈。

@@ -7,4 +7,7 @@
     <Project Path="tests/ChainKit.Core.Tests/ChainKit.Core.Tests.csproj" />
     <Project Path="tests/ChainKit.Tron.Tests/ChainKit.Tron.Tests.csproj" />
   </Folder>
+  <Folder Name="/sandbox/">
+    <Project Path="sandbox/ChainKit.Sandbox/ChainKit.Sandbox.csproj" />
+  </Folder>
 </Solution>
