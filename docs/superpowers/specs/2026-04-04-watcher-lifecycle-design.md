@@ -58,9 +58,10 @@ public enum TransactionFailureReason
 {
     ContractReverted,    // 合約主動 revert（餘額不足等）
     OutOfEnergy,         // Energy 不夠，執行中斷
-    OutOfBandwidth,      // Bandwidth 不足
+    OutOfTime,           // 合約執行超時
+    TransferFailed,      // 合約層轉帳失敗
     Expired,             // 超過 maxAge，Solidity Node 始終查不到
-    Other                // 其他未預期的失敗
+    Other                // EVM 內部錯誤等未知失敗
 }
 ```
 

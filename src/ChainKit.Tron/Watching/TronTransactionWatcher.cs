@@ -275,12 +275,10 @@ public class TronTransactionWatcher : IAsyncDisposable
 
     private static TransactionFailureReason ParseFailureReason(string? receiptResult) => receiptResult switch
     {
-        not null when receiptResult.Contains("REVERT", StringComparison.OrdinalIgnoreCase)
-            => TransactionFailureReason.ContractReverted,
-        not null when receiptResult.Contains("OUT_OF_ENERGY", StringComparison.OrdinalIgnoreCase)
-            => TransactionFailureReason.OutOfEnergy,
-        not null when receiptResult.Contains("BANDWIDTH", StringComparison.OrdinalIgnoreCase)
-            => TransactionFailureReason.OutOfBandwidth,
+        "REVERT" => TransactionFailureReason.ContractReverted,
+        "OUT_OF_ENERGY" => TransactionFailureReason.OutOfEnergy,
+        "OUT_OF_TIME" => TransactionFailureReason.OutOfTime,
+        "TRANSFER_FAILED" => TransactionFailureReason.TransferFailed,
         _ => TransactionFailureReason.Other
     };
 

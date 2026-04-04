@@ -53,10 +53,12 @@ public enum TransactionFailureReason
     ContractReverted,
     /// <summary>Not enough Energy to complete contract execution.</summary>
     OutOfEnergy,
-    /// <summary>Not enough Bandwidth for the transaction.</summary>
-    OutOfBandwidth,
+    /// <summary>Contract execution exceeded time limit.</summary>
+    OutOfTime,
+    /// <summary>Token transfer failed at contract level.</summary>
+    TransferFailed,
     /// <summary>Solidity Node did not confirm within the maximum pending age.</summary>
     Expired,
-    /// <summary>Other or unknown failure.</summary>
+    /// <summary>Other or unknown failure (EVM internal errors, etc.).</summary>
     Other
 }
