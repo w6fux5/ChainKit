@@ -51,7 +51,8 @@
 - 所有金額輸入驗證正數 + overflow 保護
 - 金額計算用 `TronConverter.DecimalPow10`（decimal 迴圈乘法），禁用 `Math.Pow`（double 精度損失）
 - `JsonDocument.Parse` 必須用 `using` dispose（歸還 ArrayPool 記憶體）
-- IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）；IAsyncDisposable：TronTransactionWatcher
+- IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）
+- IAsyncDisposable：TronTransactionWatcher
 - Thread safe：TokenInfoCache（ConcurrentDictionary）、Trc20Contract（SemaphoreSlim）、Watcher（lock）
 - Watcher 六事件：OnTrx/Trc20 Received/Sent（Unconfirmed）+ OnTransactionConfirmed/Failed（Solidity Node 確認）
 - Watcher 事件的地址欄位統一回傳 Base58 格式（T 開頭），provider 層保持 hex（見 ADR 007）
@@ -79,14 +80,21 @@
 - 單套件 per 鏈（內部使用，不拆多套件）
 - Result Pattern（不用 Exception 處理業務錯誤）
 - 三層 Token Info Cache（內建表 → memory cache → 合約呼叫）
-- 交易狀態三態（Unconfirmed/Confirmed/Failed，需 Full Node + Solidity Node）
-- Watcher 雙向監聽 + 三階段生命週期（見 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`）
+- 交易狀態三態（Unconfirmed/Confirmed/Failed），確認機制見 ADR 006
+- Watcher 雙向監聽 + 三階段生命週期，見 ADR 007 和 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`
 
 ## 文件
 
 - `docs/tron-sdk-usage-guide.md` — 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
-- `docs/decisions/` — 架構決策紀錄（ADR 001-007）
+- `docs/decisions/` — 架構決策紀錄：
+  - 001 Tron SDK 整體架構
+  - 002 移除 TransactionStatus.NotFound
+  - 003 HTTP Provider 雙端點設計
+  - 004 FailureReason 對齊 Tron receipt
+  - 005 Code Review 修復與暫緩項目
+  - 006 交易確認狀態判斷修正（ParseTransactionInfo 空物件處理）
+  - 007 Watcher 事件地址格式統一為 Base58
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
