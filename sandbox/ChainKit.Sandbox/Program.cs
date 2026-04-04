@@ -577,10 +577,18 @@ app.MapGet("/api/watcher/events", async (WatcherEventBus bus, HttpContext ctx) =
     ctx.Response.Headers.CacheControl = "no-cache";
     ctx.Response.Headers.Connection = "keep-alive";
 
-    await foreach (var evt in bus.ReadAllAsync(ctx.RequestAborted))
+    var ch = bus.Subscribe();
+    try
     {
-        await ctx.Response.WriteAsync($"data: {evt}\n\n", ctx.RequestAborted);
-        await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+        await foreach (var evt in ch.Reader.ReadAllAsync(ctx.RequestAborted))
+        {
+            await ctx.Response.WriteAsync($"data: {evt}\n\n", ctx.RequestAborted);
+            await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+        }
+    }
+    finally
+    {
+        bus.Unsubscribe(ch);
     }
 })
 .WithTags("Watcher")
@@ -619,13 +627,30 @@ record WatchAddressesRequest(string[] Addresses);
 /// </summary>
 class WatcherEventBus
 {
-    private readonly Channel<string> _channel = Channel.CreateBounded<string>(
-        new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest });
+    private readonly object _lock = new();
+    private readonly List<Channel<string>> _subscribers = [];
 
-    public void Publish(string json) => _channel.Writer.TryWrite(json);
+    public void Publish(string json)
+    {
+        lock (_lock)
+        {
+            foreach (var ch in _subscribers)
+                ch.Writer.TryWrite(json);
+        }
+    }
 
-    public IAsyncEnumerable<string> ReadAllAsync(CancellationToken ct) =>
-        _channel.Reader.ReadAllAsync(ct);
+    public Channel<string> Subscribe()
+    {
+        var ch = Channel.CreateBounded<string>(
+            new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest });
+        lock (_lock) { _subscribers.Add(ch); }
+        return ch;
+    }
+
+    public void Unsubscribe(Channel<string> ch)
+    {
+        lock (_lock) { _subscribers.Remove(ch); }
+    }
 }
 
 /// <summary>

@@ -124,17 +124,19 @@ public class TronTransactionWatcher : IAsyncDisposable
         if (tx.ContractType == "TransferContract")
         {
             var amount = ParseTrxAmount(tx.RawData);
+            var from = FormatAddress(tx.FromAddress);
+            var to = FormatAddress(tx.ToAddress);
 
             if (toWatched)
             {
                 OnTrxReceived?.Invoke(this, new TrxReceivedEventArgs(
-                    tx.TxId, tx.FromAddress, tx.ToAddress,
+                    tx.TxId, from, to,
                     amount, block.BlockNumber, block.Timestamp));
             }
             if (fromWatched)
             {
                 OnTrxSent?.Invoke(this, new TrxSentEventArgs(
-                    tx.TxId, tx.FromAddress, tx.ToAddress,
+                    tx.TxId, from, to,
                     amount, block.BlockNumber, block.Timestamp));
             }
         }
@@ -182,19 +184,23 @@ public class TronTransactionWatcher : IAsyncDisposable
                 }
             }
 
+            var from = FormatAddress(tx.FromAddress);
+            var formattedTo = FormatAddress(effectiveTo);
+            var contractAddr = FormatAddress(trc20Info.ContractAddress);
+
             if (effectiveToWatched)
             {
                 OnTrc20Received?.Invoke(this, new Trc20ReceivedEventArgs(
-                    tx.TxId, tx.FromAddress, effectiveTo,
-                    trc20Info.ContractAddress, symbol,
+                    tx.TxId, from, formattedTo,
+                    contractAddr, symbol,
                     rawAmount, convertedAmount, decimals,
                     block.BlockNumber, block.Timestamp));
             }
             if (fromWatched)
             {
                 OnTrc20Sent?.Invoke(this, new Trc20SentEventArgs(
-                    tx.TxId, tx.FromAddress, effectiveTo,
-                    trc20Info.ContractAddress, symbol,
+                    tx.TxId, from, formattedTo,
+                    contractAddr, symbol,
                     rawAmount, convertedAmount, decimals,
                     block.BlockNumber, block.Timestamp));
             }
@@ -264,6 +270,13 @@ public class TronTransactionWatcher : IAsyncDisposable
                 catch { /* provider error — retry next cycle */ }
             }
         }
+    }
+
+    private static string FormatAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address)) return address;
+        try { return TronAddress.IsValid(address) && address.StartsWith("41") ? TronAddress.ToBase58(address) : address; }
+        catch { return address; }
     }
 
     private static bool IsContractFailed(string receiptResult)

@@ -35,6 +35,10 @@ public class TronTransactionWatcherTests
     private const string OtherAddr = "41112233445566778899aabbccddeeff00112233aa";
     private const string UnrelatedAddr = "41ffffffffffffffffffffffffffffffffffffffff";
 
+    // Watcher 事件回傳 Base58 格式地址
+    private static readonly string WatchedAddrBase58 = TronAddress.ToBase58(WatchedAddr);
+    private static readonly string OtherAddrBase58 = TronAddress.ToBase58(OtherAddr);
+
     private static TronBlock MakeBlock(
         long num, params TronBlockTransaction[] txs) =>
         new(num, $"block{num}", DateTimeOffset.UtcNow, txs);
@@ -107,8 +111,8 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(received);
         Assert.Equal("tx1", received!.TxId);
-        Assert.Equal(OtherAddr, received.FromAddress);
-        Assert.Equal(WatchedAddr, received.ToAddress);
+        Assert.Equal(OtherAddrBase58, received.FromAddress);
+        Assert.Equal(WatchedAddrBase58, received.ToAddress);
         Assert.Equal(1, received.BlockNumber);
     }
 
@@ -299,7 +303,7 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(received);
         Assert.Equal("trc20tx", received!.TxId);
-        Assert.Equal(contractAddr, received.ContractAddress);
+        Assert.Equal(TronAddress.ToBase58(contractAddr), received.ContractAddress);
         // RawAmount is always present
         Assert.Equal((decimal)tokenAmount, received.RawAmount);
         // No provider supplied and unknown token — Amount is null
@@ -401,8 +405,8 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(sent);
         Assert.Equal("tx1", sent!.TxId);
-        Assert.Equal(WatchedAddr, sent.FromAddress);
-        Assert.Equal(UnrelatedAddr, sent.ToAddress);
+        Assert.Equal(WatchedAddrBase58, sent.FromAddress);
+        Assert.Equal(TronAddress.ToBase58(UnrelatedAddr), sent.ToAddress);
         Assert.Equal(5m, sent.Amount);
     }
 
@@ -442,8 +446,8 @@ public class TronTransactionWatcherTests
 
         Assert.NotNull(sent);
         Assert.Equal("trc20out", sent!.TxId);
-        Assert.Equal(WatchedAddr, sent.FromAddress);
-        Assert.Equal(contractAddr, sent.ContractAddress);
+        Assert.Equal(WatchedAddrBase58, sent.FromAddress);
+        Assert.Equal(TronAddress.ToBase58(contractAddr), sent.ContractAddress);
         Assert.Equal((decimal)tokenAmount, sent.RawAmount);
     }
 
