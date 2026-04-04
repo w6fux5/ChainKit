@@ -25,6 +25,8 @@ Thumbs.db
 coverage-results/
 coverage-report/
 
+## Sandbox
+sandbox/ChainKit.Sandbox/*.http
+
 ## Misc
 *.stackdump
-/.claude/settings.local.json
