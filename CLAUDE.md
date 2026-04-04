@@ -33,6 +33,7 @@
 - E2E tests: `dotnet test --filter "Category=Integration"`
 - All tests: `dotnet test`
 - Sandbox: `dotnet run --project sandbox/ChainKit.Sandbox`（Scalar UI: http://localhost:5178/scalar/v1）
+- Sandbox（背景啟動）: `dotnet run --project sandbox/ChainKit.Sandbox -- --urls "http://localhost:5178" &`
 - Coverage: `dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
 
 ### E2E 測試環境變數（可選，有預設值）
@@ -53,8 +54,10 @@
 - IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）；IAsyncDisposable：TronTransactionWatcher
 - Thread safe：TokenInfoCache（ConcurrentDictionary）、Trc20Contract（SemaphoreSlim）、Watcher（lock）
 - Watcher 六事件：OnTrx/Trc20 Received/Sent（Unconfirmed）+ OnTransactionConfirmed/Failed（Solidity Node 確認）
+- Watcher 事件的地址欄位統一回傳 Base58 格式（T 開頭），provider 層保持 hex（見 ADR 007）
 - TronHttpProvider 支援雙端點：`baseUrl`（Full Node）+ `solidityUrl`（Solidity Node，預設同 baseUrl）。未設定 Solidity Node 時無法正確判斷交易確認狀態（見 ADR 006）
 - 新增功能必須有對應測試
+- 測試 mock 資料必須模擬真實節點回應（如空物件 `{}`），不能只配合程式邏輯設計 mock
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
 ## Tron 開發注意事項
@@ -67,6 +70,9 @@
 - E2E 測試帳戶 bandwidth 會耗盡，測試需要有 graceful degradation（檢測 BANDWITH_ERROR）
 - .NET 內建 SHA3_256 是 NIST SHA3（padding 0x06），不是 Tron/Ethereum 的 Keccak-256（padding 0x01），不能混用
 - 自建節點：HTTP（8090/8091）預設開啟，gRPC（50051/50061）需在 config.conf 的 `node.rpc` 手動開啟
+- 交易確認判斷必須用 Solidity Node（`/walletsolidity/`），Full Node 不處理此路徑（回傳 405）
+- Smart Contract 確認：`receipt.result == SUCCESS`；System Contract：Solidity Node 查得到即 confirmed
+- Solidity Node 回傳 `{}` 代表交易未確認，解析時不可用呼叫端的 txId 填充（見 ADR 006）
 
 ## 關鍵設計決策
 
