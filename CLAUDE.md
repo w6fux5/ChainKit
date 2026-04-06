@@ -95,6 +95,8 @@
   - 005 Code Review 修復與暫緩項目
   - 006 交易確認狀態判斷修正（ParseTransactionInfo 空物件處理）
   - 007 Watcher 事件地址格式統一為 Base58
+  - 008 移除 GetAccountOverviewAsync（職責重疊、狀態判斷不一致）
+  - 009 Delegation API 端點修正（大小寫、JSON key 序列化）
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
