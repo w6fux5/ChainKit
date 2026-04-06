@@ -60,6 +60,9 @@
 - 新增功能必須有對應測試
 - 測試 mock 資料必須模擬真實節點回應（如空物件 `{}`），不能只配合程式邏輯設計 mock
 - 高階 API 保持單一職責，不做 aggregate 端點（查餘額、查資源、查交易分開，見 ADR 008）
+- SDK 所有 public class 建構子接受 optional `ILogger<T>?`（預設 NullLogger），不是 breaking change
+- TRC20 所有操作統一走 `Trc20Contract`，`TronClient` 不包 TRC20 transfer（見 ADR 011）
+- Sandbox array query parameter 同時支援 `?trc20=a&trc20=b` 和 `?trc20=a,b`（逗號分隔 workaround）
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
 ## Tron 開發注意事項
@@ -76,7 +79,7 @@
 - Smart Contract 確認：`receipt.result == SUCCESS`；System Contract：Solidity Node 查得到即 confirmed
 - Solidity Node 回傳 `{}` 代表交易未確認，解析時不可用呼叫端的 txId 填充（見 ADR 006）
 - Tron HTTP API 端點名稱**大小寫敏感**（如 `v2` 不能寫成 `V2`），錯誤時回傳 405（見 ADR 009）
-- `TronHttpProvider` 全域用 `SnakeCaseLower` 序列化，新增 API 時注意 request body key 是否會被轉換（見 ADR 009）
+- `TronHttpProvider` 全域用 `CamelCase` 序列化（從 SnakeCaseLower 改過來，見 ADR 010）。現有 anonymous object 的小寫開頭屬性不受影響
 
 ## 關鍵設計決策
 
