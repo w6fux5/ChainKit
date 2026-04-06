@@ -59,6 +59,7 @@
 - TronHttpProvider 支援雙端點：`baseUrl`（Full Node）+ `solidityUrl`（Solidity Node，預設同 baseUrl）。未設定 Solidity Node 時無法正確判斷交易確認狀態（見 ADR 006）
 - 新增功能必須有對應測試
 - 測試 mock 資料必須模擬真實節點回應（如空物件 `{}`），不能只配合程式邏輯設計 mock
+- 高階 API 保持單一職責，不做 aggregate 端點（查餘額、查資源、查交易分開，見 ADR 008）
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
 ## Tron 開發注意事項
@@ -74,6 +75,8 @@
 - 交易確認判斷必須用 Solidity Node（`/walletsolidity/`），Full Node 不處理此路徑（回傳 405）
 - Smart Contract 確認：`receipt.result == SUCCESS`；System Contract：Solidity Node 查得到即 confirmed
 - Solidity Node 回傳 `{}` 代表交易未確認，解析時不可用呼叫端的 txId 填充（見 ADR 006）
+- Tron HTTP API 端點名稱**大小寫敏感**（如 `v2` 不能寫成 `V2`），錯誤時回傳 405（見 ADR 009）
+- `TronHttpProvider` 全域用 `SnakeCaseLower` 序列化，新增 API 時注意 request body key 是否會被轉換（見 ADR 009）
 
 ## 關鍵設計決策
 
