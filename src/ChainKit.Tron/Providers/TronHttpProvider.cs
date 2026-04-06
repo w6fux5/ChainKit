@@ -287,6 +287,10 @@ public class TronHttpProvider : ITronProvider, IDisposable
             FreeBandwidthUsed: GetLong("freeNetUsed"),
             EnergyLimit: GetLong("EnergyLimit"),
             EnergyUsed: GetLong("EnergyUsed"),
+            NetworkTotalBandwidthLimit: GetLong("TotalNetLimit"),
+            NetworkTotalBandwidthWeight: GetLong("TotalNetWeight"),
+            NetworkTotalEnergyLimit: GetLong("TotalEnergyLimit"),
+            NetworkTotalEnergyWeight: GetLong("TotalEnergyWeight"),
             TotalBandwidthLimit: GetLong("NetLimit"),
             TotalBandwidthUsed: GetLong("NetUsed"));
     }

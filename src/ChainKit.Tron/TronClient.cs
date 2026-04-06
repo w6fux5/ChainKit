@@ -583,6 +583,50 @@ public class TronClient : IDisposable
         }
     }
 
+    // === Resource Exchange Rate ===
+
+    /// <summary>
+    /// Gets the current exchange rate between TRX and Energy/Bandwidth.
+    /// Supports bidirectional conversion via <see cref="ResourceExchangeRate.EstimateResource"/>
+    /// and <see cref="ResourceExchangeRate.EstimateTrx"/>.
+    /// </summary>
+    public async Task<TronResult<ResourceExchangeRate>> GetResourceExchangeRateAsync(
+        ResourceType resource, CancellationToken ct = default)
+    {
+        try
+        {
+            // Use a zero-prefix address to query network-wide resource data
+            var resourceInfo = await Provider.GetAccountResourceAsync(
+                "410000000000000000000000000000000000000000", ct);
+
+            var totalStaked = resource == ResourceType.Energy
+                ? resourceInfo.NetworkTotalEnergyWeight
+                : resourceInfo.NetworkTotalBandwidthWeight;
+            var totalLimit = resource == ResourceType.Energy
+                ? resourceInfo.NetworkTotalEnergyLimit
+                : resourceInfo.NetworkTotalBandwidthLimit;
+
+            if (totalStaked <= 0 || totalLimit <= 0)
+            {
+                return TronResult<ResourceExchangeRate>.Fail(
+                    TronErrorCode.Unknown, "Network resource data unavailable");
+            }
+
+            // Formula: resource = (stakedTrx / totalStaked) × totalLimit
+            // So: resourcePerTrx = totalLimit / (totalStaked / SunPerTrx) = totalLimit * SunPerTrx / totalStaked
+            var resourcePerTrx = (decimal)totalLimit * SunPerTrx / totalStaked;
+            var trxPerResource = totalStaked / ((decimal)totalLimit * SunPerTrx);
+
+            return TronResult<ResourceExchangeRate>.Ok(new ResourceExchangeRate(
+                resource, resourcePerTrx, trxPerResource, totalStaked, totalLimit));
+        }
+        catch (Exception ex)
+        {
+            return TronResult<ResourceExchangeRate>.Fail(
+                TronErrorCode.ProviderConnectionFailed, ex.Message, ex.ToString());
+        }
+    }
+
     // === Contract Deployment ===
 
     /// <summary>

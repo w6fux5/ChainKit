@@ -777,12 +777,18 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         // field 1: int64 freeNetUsed, field 2: int64 freeNetLimit
         // field 3: int64 NetUsed, field 4: int64 NetLimit
         // field 5: int64 EnergyUsed, field 6: int64 EnergyLimit
+        // field 7: int64 TotalNetLimit, field 8: int64 TotalNetWeight
+        // field 9: int64 TotalEnergyLimit (field 11 in some versions), field 10: int64 TotalEnergyWeight
         var freeNetUsed = ParseVarintField(data, 1);
         var freeNetLimit = ParseVarintField(data, 2);
         var netUsed = ParseVarintField(data, 3);
         var netLimit = ParseVarintField(data, 4);
         var energyUsed = ParseVarintField(data, 5);
         var energyLimit = ParseVarintField(data, 6);
+        var totalNetLimit = ParseVarintField(data, 7);
+        var totalNetWeight = ParseVarintField(data, 8);
+        var totalEnergyLimit = ParseVarintField(data, 13);
+        var totalEnergyWeight = ParseVarintField(data, 14);
 
         return new AccountResourceInfo(
             FreeBandwidthLimit: freeNetLimit,
@@ -790,7 +796,11 @@ public class TronGrpcProvider : ITronProvider, IDisposable
             EnergyLimit: energyLimit,
             EnergyUsed: energyUsed,
             TotalBandwidthLimit: netLimit,
-            TotalBandwidthUsed: netUsed);
+            TotalBandwidthUsed: netUsed,
+            NetworkTotalBandwidthLimit: totalNetLimit,
+            NetworkTotalBandwidthWeight: totalNetWeight,
+            NetworkTotalEnergyLimit: totalEnergyLimit,
+            NetworkTotalEnergyWeight: totalEnergyWeight);
     }
 
     private static DelegatedResourceIndex ParseDelegatedResourceIndex(byte[] data)

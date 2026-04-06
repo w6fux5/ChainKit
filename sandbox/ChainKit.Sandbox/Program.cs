@@ -359,6 +359,15 @@ app.MapPost("/api/trc20/burn-from", async (Trc20BurnFromRequest req, ITronProvid
 //  Staking — 質押與資源委託（Stake 2.0）
 // ============================================================
 
+app.MapGet("/api/staking/exchange-rate/{resource}", async (ResourceType resource, TronClient tron) =>
+{
+    var result = await tron.GetResourceExchangeRateAsync(resource);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("Staking")
+.WithSummary("資源兌換率")
+.WithDescription("查詢 TRX ↔ Energy/Bandwidth 兌換率。回傳 resourcePerTrx（1 TRX 能換多少資源）和 trxPerResource（1 單位資源需要多少 TRX）");
+
 app.MapPost("/api/staking/stake", async (StakeRequest req, TronClient tron) =>
 {
     var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));

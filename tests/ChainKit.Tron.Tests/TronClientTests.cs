@@ -1257,6 +1257,72 @@ public class TronClientTests
 
     // === Helpers ===
 
+    // === GetResourceExchangeRateAsync ===
+
+    [Fact]
+    public async Task GetResourceExchangeRateAsync_Energy_ReturnsRate()
+    {
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(0, 0, 0, 0, 0, 0,
+                NetworkTotalEnergyLimit: 180_000_000_000,
+                NetworkTotalEnergyWeight: 50_000_000_000_000)); // 50M TRX staked (in Sun)
+
+        var result = await _client.GetResourceExchangeRateAsync(ResourceType.Energy);
+
+        Assert.True(result.Success);
+        Assert.Equal(ResourceType.Energy, result.Data!.Resource);
+        Assert.True(result.Data.ResourcePerTrx > 0);
+        Assert.True(result.Data.TrxPerResource > 0);
+
+        // 1 TRX = 1M Sun. Rate = 180B * 1M / 50T = 3600
+        Assert.Equal(3600m, result.Data.ResourcePerTrx);
+
+        // Bidirectional: 100 TRX → 360000 Energy
+        Assert.Equal(360_000m, result.Data.EstimateResource(100m));
+        // Bidirectional: 360000 Energy → ~100 TRX
+        Assert.InRange(result.Data.EstimateTrx(360_000), 99.99m, 100.01m);
+    }
+
+    [Fact]
+    public async Task GetResourceExchangeRateAsync_Bandwidth_ReturnsRate()
+    {
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(0, 0, 0, 0, 0, 0,
+                NetworkTotalBandwidthLimit: 43_200_000_000,
+                NetworkTotalBandwidthWeight: 20_000_000_000_000));
+
+        var result = await _client.GetResourceExchangeRateAsync(ResourceType.Bandwidth);
+
+        Assert.True(result.Success);
+        Assert.Equal(ResourceType.Bandwidth, result.Data!.Resource);
+        Assert.True(result.Data.ResourcePerTrx > 0);
+    }
+
+    [Fact]
+    public async Task GetResourceExchangeRateAsync_ZeroWeight_ReturnsFail()
+    {
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AccountResourceInfo(0, 0, 0, 0, 0, 0));
+
+        var result = await _client.GetResourceExchangeRateAsync(ResourceType.Energy);
+
+        Assert.False(result.Success);
+        Assert.Contains("unavailable", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task GetResourceExchangeRateAsync_ProviderThrows_ReturnsFail()
+    {
+        _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("timeout"));
+
+        var result = await _client.GetResourceExchangeRateAsync(ResourceType.Energy);
+
+        Assert.False(result.Success);
+    }
+
+    // === Helpers ===
+
     /// <summary>
     /// Builds an ABI-encoded string return value (offset + length + data padded to 32 bytes).
     /// </summary>

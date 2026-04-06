@@ -43,7 +43,12 @@ public record TransactionInfoDto(
     long EnergyFee = 0, long NetFee = 0,
     // Contract execution result from receipt (e.g. "SUCCESS", "REVERT", "OUT_OF_ENERGY")
     string ReceiptResult = "");
-public record AccountResourceInfo(long FreeBandwidthLimit, long FreeBandwidthUsed, long EnergyLimit, long EnergyUsed, long TotalBandwidthLimit, long TotalBandwidthUsed);
+public record AccountResourceInfo(
+    long FreeBandwidthLimit, long FreeBandwidthUsed,
+    long EnergyLimit, long EnergyUsed,
+    long TotalBandwidthLimit, long TotalBandwidthUsed,
+    long NetworkTotalBandwidthLimit = 0, long NetworkTotalBandwidthWeight = 0,
+    long NetworkTotalEnergyLimit = 0, long NetworkTotalEnergyWeight = 0);
 
 // Delegation DTOs (used by ITronProvider)
 
