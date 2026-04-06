@@ -34,7 +34,7 @@
 - All tests: `dotnet test`
 - Sandbox: `dotnet run --project sandbox/ChainKit.Sandbox`（Swagger UI: http://localhost:5178/swagger）
 - Sandbox（背景啟動）: `dotnet run --project sandbox/ChainKit.Sandbox -- --urls "http://localhost:5178" &`
-- Coverage: `dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
+- Coverage: `rm -rf coverage-results coverage-report && dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
 
 ### E2E 測試環境變數（可選，有預設值）
 
@@ -86,6 +86,8 @@
 - 單套件 per 鏈（內部使用，不拆多套件）
 - Result Pattern（不用 Exception 處理業務錯誤）
 - 三層 Token Info Cache（內建表 → memory cache → 合約呼叫）
+- `Trc20Contract.GetTokenInfoAsync()` 五查詢並行回傳 name/symbol/decimals/totalSupply/originAddress
+- `ITronProvider.GetContractAsync()` 查詢合約部署者地址（origin_address）
 - 交易狀態三態（Unconfirmed/Confirmed/Failed），確認機制見 ADR 006
 - Watcher 雙向監聽 + 三階段生命週期，見 ADR 007 和 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`
@@ -93,19 +95,7 @@
 ## 文件
 
 - `docs/tron-sdk-usage-guide.md` — 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
-- `docs/decisions/` — 架構決策紀錄：
-  - 001 Tron SDK 整體架構
-  - 002 移除 TransactionStatus.NotFound
-  - 003 HTTP Provider 雙端點設計
-  - 004 FailureReason 對齊 Tron receipt
-  - 005 Code Review 修復與暫緩項目
-  - 006 交易確認狀態判斷修正（ParseTransactionInfo 空物件處理）
-  - 007 Watcher 事件地址格式統一為 Base58
-  - 008 移除 GetAccountOverviewAsync（職責重疊、狀態判斷不一致）
-  - 009 Delegation API 端點修正（大小寫、JSON key 序列化）
-  - 010 SDK Logging 機制與序列化修正（ILogger 注入、SnakeCaseLower → CamelCase）
-  - 011 移除 TronClient.TransferTrc20Async（TRC20 操作統一走 Trc20Contract）
-  - 012 Sandbox 測試介面從 Scalar 換成 Swagger UI（Scalar array param bug）
+- `docs/decisions/` — 架構決策紀錄（ADR 001-012），檔名即標題
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
