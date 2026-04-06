@@ -23,7 +23,7 @@
 - `tests/ChainKit.Core.Tests/` — Core 單元測試
 - `tests/ChainKit.Tron.Tests/` — Tron 單元測試 + E2E 測試
 - `contracts/` — Solidity 原始碼和編譯輸出（TRC20 模板）
-- `sandbox/ChainKit.Sandbox/` — Web API 測試介面（Scalar UI），串接所有 SDK API
+- `sandbox/ChainKit.Sandbox/` — Web API 測試介面（Swagger UI），串接所有 SDK API
 
 ## 指令
 
@@ -32,7 +32,7 @@
 - Unit tests: `dotnet test --filter "Category!=Integration"`
 - E2E tests: `dotnet test --filter "Category=Integration"`
 - All tests: `dotnet test`
-- Sandbox: `dotnet run --project sandbox/ChainKit.Sandbox`（Scalar UI: http://localhost:5178/scalar/v1）
+- Sandbox: `dotnet run --project sandbox/ChainKit.Sandbox`（Swagger UI: http://localhost:5178/swagger）
 - Sandbox（背景啟動）: `dotnet run --project sandbox/ChainKit.Sandbox -- --urls "http://localhost:5178" &`
 - Coverage: `dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
 
@@ -100,6 +100,9 @@
   - 007 Watcher 事件地址格式統一為 Base58
   - 008 移除 GetAccountOverviewAsync（職責重疊、狀態判斷不一致）
   - 009 Delegation API 端點修正（大小寫、JSON key 序列化）
+  - 010 SDK Logging 機制與序列化修正（ILogger 注入、SnakeCaseLower → CamelCase）
+  - 011 移除 TronClient.TransferTrc20Async（TRC20 操作統一走 Trc20Contract）
+  - 012 Sandbox 測試介面從 Scalar 換成 Swagger UI（Scalar array param bug）
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）

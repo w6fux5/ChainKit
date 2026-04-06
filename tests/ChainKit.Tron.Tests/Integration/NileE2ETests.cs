@@ -145,14 +145,12 @@ public class NileHighLevelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TransferTrc20Async_SendsAndSucceeds()
+    public async Task Trc20Contract_TransferAsync_SendsAndSucceeds()
     {
-        var result = await _client.TransferTrc20Async(
-            _account1,
-            NileTestConstants.TtteContractAddress,
-            NileTestConstants.Account2Address,
-            1m,
-            6); // TTTE has 6 decimals
+        using var contract = new Trc20Contract(_client.Provider,
+            NileTestConstants.TtteContractAddress, _account1);
+        var result = await contract.TransferAsync(
+            NileTestConstants.Account2Address, 1m);
 
         Assert.True(result.Success, result.Error?.Message ?? "unknown error");
 
@@ -168,9 +166,10 @@ public class NileHighLevelTests : IAsyncLifetime
         // First, perform a TRC20 transfer to ensure we have a txId
         if (_trc20TransferTxId is null)
         {
-            var txResult = await _client.TransferTrc20Async(
-                _account1, NileTestConstants.TtteContractAddress,
-                NileTestConstants.Account2Address, 1m, 6);
+            using var contract = new Trc20Contract(_client.Provider,
+                NileTestConstants.TtteContractAddress, _account1);
+            var txResult = await contract.TransferAsync(
+                NileTestConstants.Account2Address, 1m);
             Assert.True(txResult.Success, txResult.Error?.Message ?? "TRC20 transfer failed");
             _trc20TransferTxId = txResult.Data!.TxId;
         }

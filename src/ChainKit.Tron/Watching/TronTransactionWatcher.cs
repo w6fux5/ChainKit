@@ -5,6 +5,8 @@ using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Providers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ChainKit.Tron.Watching;
 
@@ -12,12 +14,13 @@ public class TronTransactionWatcher : IAsyncDisposable
 {
     private readonly ITronBlockStream _stream;
     private readonly ITronProvider _provider;
-    private readonly TokenInfoCache _tokenCache = new();
+    private readonly TokenInfoCache _tokenCache;
     private readonly HashSet<string> _watchedAddresses = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
     private readonly ConcurrentDictionary<string, PendingTx> _pendingTransactions = new();
     private readonly int _confirmationIntervalMs;
     private readonly TimeSpan _maxPendingAge;
+    private readonly ILogger _logger;
     private CancellationTokenSource? _cts;
     private Task? _watchTask;
     private Task? _confirmationTask;
@@ -28,12 +31,15 @@ public class TronTransactionWatcher : IAsyncDisposable
     private static readonly byte[] Trc20TransferSelector = { 0xa9, 0x05, 0x9c, 0xbb };
 
     public TronTransactionWatcher(ITronBlockStream stream, ITronProvider provider,
-        int confirmationIntervalMs = 3000, TimeSpan? maxPendingAge = null)
+        int confirmationIntervalMs = 3000, TimeSpan? maxPendingAge = null,
+        ILogger<TronTransactionWatcher>? logger = null)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _confirmationIntervalMs = confirmationIntervalMs;
         _maxPendingAge = maxPendingAge ?? TimeSpan.FromMinutes(5);
+        _logger = logger ?? NullLogger<TronTransactionWatcher>.Instance;
+        _tokenCache = new TokenInfoCache(_logger);
     }
 
     public void WatchAddress(string address)
@@ -170,9 +176,9 @@ public class TronTransactionWatcher : IAsyncDisposable
                     if (tokenInfo.Decimals > 0)
                         convertedAmount = trc20Info.Amount / TronConverter.DecimalPow10(tokenInfo.Decimals);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // resolution failed — try known-token cache only
+                    _logger.LogDebug(ex, "Token info resolution failed for {Contract}, using cache fallback", trc20Info.ContractAddress);
                     var tokenInfo = _tokenCache.Get(trc20Info.ContractAddress);
                     if (tokenInfo != null)
                     {
@@ -267,7 +273,7 @@ public class TronTransactionWatcher : IAsyncDisposable
                     }
                 }
                 catch (OperationCanceledException) { throw; }
-                catch { /* provider error — retry next cycle */ }
+                catch (Exception ex) { _logger.LogDebug(ex, "Confirmation check failed for tx {TxId}, retrying next cycle", pending.TxId); }
             }
         }
     }

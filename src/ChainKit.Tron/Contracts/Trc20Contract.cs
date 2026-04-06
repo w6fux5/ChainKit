@@ -35,6 +35,37 @@ public class Trc20Contract : IDisposable
 
     // --- Read-only (triggerConstantContract, no signing) ---
 
+    /// <summary>
+    /// Returns basic token metadata (name, symbol, decimals, totalSupply) in a single call.
+    /// All four contract queries run in parallel.
+    /// </summary>
+    public async Task<TronResult<Trc20TokenInfo>> GetTokenInfoAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var nameTask = CallConstantAsync("name()", Array.Empty<byte>(), ct);
+            var symbolTask = CallConstantAsync("symbol()", Array.Empty<byte>(), ct);
+            var decimalsTask = GetDecimalsInternalAsync(ct);
+            var supplyTask = CallConstantAsync("totalSupply()", Array.Empty<byte>(), ct);
+            var contractTask = _provider.GetContractAsync(_contractHex, ct);
+
+            await Task.WhenAll(nameTask, symbolTask, decimalsTask, supplyTask, contractTask);
+
+            var name = AbiEncoder.DecodeString(nameTask.Result);
+            var symbol = AbiEncoder.DecodeString(symbolTask.Result);
+            var decimals = decimalsTask.Result;
+            var rawSupply = AbiEncoder.DecodeUint256(supplyTask.Result);
+            var totalSupply = ToDecimalAmount(rawSupply, decimals);
+            var originAddress = FormatAddress(contractTask.Result.OriginAddress);
+
+            return TronResult<Trc20TokenInfo>.Ok(new Trc20TokenInfo(name, symbol, decimals, totalSupply, originAddress));
+        }
+        catch (Exception ex)
+        {
+            return TronResult<Trc20TokenInfo>.Fail(TronErrorCode.ContractExecutionFailed, ex.Message, ex.ToString());
+        }
+    }
+
     /// <summary>Returns the token name.</summary>
     public async Task<TronResult<string>> NameAsync(CancellationToken ct = default)
     {
@@ -296,6 +327,18 @@ public class Trc20Contract : IDisposable
     {
         if (address.StartsWith("T"))
             return TronAddress.ToHex(address);
+        return address;
+    }
+
+    private static string FormatAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address)) return address;
+        if (address.Length == 42 && address.StartsWith("41", StringComparison.OrdinalIgnoreCase)
+            && address.All(c => char.IsAsciiHexDigit(c)))
+        {
+            try { return TronAddress.ToBase58(address); }
+            catch { return address; }
+        }
         return address;
     }
 

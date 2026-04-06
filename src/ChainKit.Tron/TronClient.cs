@@ -6,6 +6,8 @@ using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol;
 using ChainKit.Tron.Protocol.Protobuf;
 using ChainKit.Tron.Providers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ChainKit.Tron;
 
@@ -17,13 +19,16 @@ public class TronClient : IDisposable
 {
     private const long SunPerTrx = 1_000_000;
     private const long DefaultFeeLimit = 100_000_000; // 100 TRX
+    private readonly ILogger _logger;
 
     public ITronProvider Provider { get; }
-    internal TokenInfoCache TokenCache { get; } = new();
+    internal TokenInfoCache TokenCache { get; }
 
-    public TronClient(ITronProvider provider)
+    public TronClient(ITronProvider provider, ILogger<TronClient>? logger = null)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _logger = logger ?? NullLogger<TronClient>.Instance;
+        TokenCache = new TokenInfoCache(_logger);
     }
 
     // === Transfer ===
@@ -75,58 +80,6 @@ public class TronClient : IDisposable
         }
     }
 
-    /// <summary>
-    /// Transfers TRC20 tokens.
-    /// Flow: encode ABI -> triggerSmartContract -> sign -> broadcast
-    /// </summary>
-    public async Task<TronResult<TransferResult>> TransferTrc20Async(
-        TronAccount from, string contractAddress,
-        string toAddress, decimal amount, int decimals, CancellationToken ct = default)
-    {
-        if (amount <= 0)
-            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
-        if (decimals < 0 || decimals > 77)
-            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Invalid decimals value");
-
-        try
-        {
-            var toHex = ResolveHexAddress(toAddress);
-            var contractHex = ResolveHexAddress(contractAddress);
-            BigInteger rawAmount;
-            try { rawAmount = new BigInteger(amount * TronConverter.DecimalPow10(decimals)); }
-            catch (OverflowException) { return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount too large"); }
-            var data = AbiEncoder.EncodeTransfer(toHex, rawAmount);
-
-            // Use TriggerSmartContractAsync to get the transaction from the node.
-            // The node already sets ref_block_bytes and ref_block_hash on the returned tx,
-            // so we sign it directly without modifying the raw_data.
-            var tx = await Provider.TriggerSmartContractAsync(
-                from.HexAddress, contractHex, "transfer(address,uint256)",
-                data[4..], // strip selector — provider adds it
-                DefaultFeeLimit, 0, ct);
-
-            var signed = TransactionUtils.Sign(tx, from.PrivateKey);
-            var txId = TransactionUtils.ComputeTxId(signed).ToHex();
-
-            var broadcastResult = await Provider.BroadcastTransactionAsync(signed, ct);
-
-            if (!broadcastResult.Success)
-            {
-                var errorCode = MapBroadcastError(broadcastResult.Message);
-                return TronResult<TransferResult>.Fail(errorCode,
-                    broadcastResult.Message ?? "Broadcast failed", broadcastResult.Message);
-            }
-
-            return TronResult<TransferResult>.Ok(
-                new TransferResult(broadcastResult.TxId ?? txId, from.Address, toAddress, amount));
-        }
-        catch (Exception ex)
-        {
-            return TronResult<TransferResult>.Fail(
-                TronErrorCode.ProviderConnectionFailed, ex.Message, ex.ToString());
-        }
-    }
-
     // === Query ===
 
     /// <summary>
@@ -151,9 +104,9 @@ public class TronClient : IDisposable
             {
                 solidityInfo = await Provider.GetTransactionInfoByIdAsync(txId, ct);
             }
-            catch
+            catch (Exception ex)
             {
-                // Solidity info not available yet — treat as unconfirmed
+                _logger.LogDebug(ex, "Solidity info unavailable for tx {TxId}, treating as unconfirmed", txId);
             }
 
             var status = DetermineStatus(txInfo, solidityInfo);
@@ -299,9 +252,9 @@ public class TronClient : IDisposable
                         : null;
                     trc20Balances[contract] = new Trc20BalanceInfo(rawBalanceDecimal, convertedBalance, tokenInfo.Symbol, tokenInfo.Decimals);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // If a particular TRC20 query fails, report zero
+                    _logger.LogDebug(ex, "TRC20 balance query failed for contract {Contract}, reporting zero", contract);
                     trc20Balances[contract] = new Trc20BalanceInfo(0m, 0m, "", 0);
                 }
             }
@@ -569,9 +522,9 @@ public class TronClient : IDisposable
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Skip this delegation pair on failure
+                        _logger.LogDebug(ex, "Delegation query failed for {From} -> {To}", hexAddress, toAddr);
                     }
                 }
 
@@ -599,18 +552,18 @@ public class TronClient : IDisposable
                             }
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Skip this delegation pair on failure
+                        _logger.LogDebug(ex, "Delegation query failed for {From} -> {To}", fromAddr, hexAddress);
                     }
                 }
 
                 delegationsOut = outList;
                 delegationsIn = inList;
             }
-            catch
+            catch (Exception ex)
             {
-                // Delegation queries failed; continue with empty lists
+                _logger.LogWarning(ex, "Delegation index query failed for {Address}", hexAddress);
             }
 
             return TronResult<ResourceInfo>.Ok(new ResourceInfo(

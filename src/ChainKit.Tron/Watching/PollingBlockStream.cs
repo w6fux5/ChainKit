@@ -1,5 +1,7 @@
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Providers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ChainKit.Tron.Watching;
 
@@ -7,11 +9,14 @@ public class PollingBlockStream : ITronBlockStream
 {
     private readonly ITronProvider _provider;
     private readonly int _intervalMs;
+    private readonly ILogger _logger;
 
-    public PollingBlockStream(ITronProvider provider, int intervalMs = 3000)
+    public PollingBlockStream(ITronProvider provider, int intervalMs = 3000,
+        ILogger<PollingBlockStream>? logger = null)
     {
         _provider = provider;
         _intervalMs = intervalMs;
+        _logger = logger ?? NullLogger<PollingBlockStream>.Instance;
     }
 
     public async IAsyncEnumerable<TronBlock> StreamBlocksAsync(
@@ -48,7 +53,7 @@ public class PollingBlockStream : ITronBlockStream
                 }
             }
             catch (OperationCanceledException) { yield break; }
-            catch { /* swallow provider errors, retry next interval */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "Block polling failed, retrying next interval"); }
 
             if (block != null)
                 yield return block;

@@ -3,6 +3,8 @@ using ChainKit.Core.Extensions;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol.Protobuf;
 using Google.Protobuf;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NetMQ;
 using NetMQ.Sockets;
 
@@ -11,10 +13,12 @@ namespace ChainKit.Tron.Watching;
 public class ZmqBlockStream : ITronBlockStream
 {
     private readonly string _endpoint;
+    private readonly ILogger _logger;
 
-    public ZmqBlockStream(string zmqEndpoint)
+    public ZmqBlockStream(string zmqEndpoint, ILogger<ZmqBlockStream>? logger = null)
     {
         _endpoint = zmqEndpoint ?? throw new ArgumentNullException(nameof(zmqEndpoint));
+        _logger = logger ?? NullLogger<ZmqBlockStream>.Instance;
     }
 
     public async IAsyncEnumerable<TronBlock> StreamBlocksAsync(
@@ -36,7 +40,7 @@ public class ZmqBlockStream : ITronBlockStream
                 }
             }
             catch (OperationCanceledException) { yield break; }
-            catch { /* swallow parse errors, continue */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "ZMQ block parse error, continuing"); }
 
             if (block != null)
                 yield return block;

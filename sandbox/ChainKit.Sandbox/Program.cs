@@ -7,7 +7,6 @@ using ChainKit.Tron.Protocol;
 using ChainKit.Tron.Providers;
 using ChainKit.Tron.Watching;
 using Microsoft.AspNetCore.Mvc;
-using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,7 +22,6 @@ builder.Services.AddSwaggerGen(c =>
     c.TagActionsBy(api => [api.GroupName ?? api.ActionDescriptor.EndpointMetadata
         .OfType<TagsAttribute>().FirstOrDefault()?.Tags.First() ?? "Other"]);
 });
-builder.Services.AddOpenApi();
 
 // 從 appsettings.json 讀取 Tron 節點設定
 var tronConfig = builder.Configuration.GetSection("Tron");
@@ -46,7 +44,8 @@ else
             string.IsNullOrEmpty(httpSolidity) ? null : httpSolidity,
             string.IsNullOrEmpty(apiKey) ? null : apiKey));
 }
-builder.Services.AddSingleton<TronClient>(sp => new TronClient(sp.GetRequiredService<ITronProvider>()));
+builder.Services.AddSingleton<TronClient>(sp =>
+    new TronClient(sp.GetRequiredService<ITronProvider>(), sp.GetRequiredService<ILogger<TronClient>>()));
 
 // Watcher
 var watcherConfig = builder.Configuration.GetSection("Tron:Watcher");
@@ -58,31 +57,25 @@ var zmqEndpoint = builder.Configuration["Tron:ZmqEndpoint"];
 builder.Services.AddSingleton<ITronBlockStream>(sp =>
 {
     if (!string.IsNullOrEmpty(zmqEndpoint))
-        return new ZmqBlockStream(zmqEndpoint);
-    return new PollingBlockStream(sp.GetRequiredService<ITronProvider>(), pollingIntervalMs);
+        return new ZmqBlockStream(zmqEndpoint, sp.GetRequiredService<ILogger<ZmqBlockStream>>());
+    return new PollingBlockStream(sp.GetRequiredService<ITronProvider>(), pollingIntervalMs,
+        sp.GetRequiredService<ILogger<PollingBlockStream>>());
 });
 builder.Services.AddSingleton<TronTransactionWatcher>(sp =>
     new TronTransactionWatcher(
         sp.GetRequiredService<ITronBlockStream>(),
         sp.GetRequiredService<ITronProvider>(),
         confirmationIntervalMs,
-        TimeSpan.FromMinutes(maxPendingAgeMinutes)));
+        TimeSpan.FromMinutes(maxPendingAgeMinutes),
+        sp.GetRequiredService<ILogger<TronTransactionWatcher>>()));
 builder.Services.AddSingleton<WatcherEventBus>();
 builder.Services.AddHostedService<WatcherBackgroundService>();
 
 var app = builder.Build();
 
-// Swagger UI — /swagger
+// Swagger UI — /swagger（預設測試介面）
 app.UseSwagger();
-app.UseSwaggerUI();
-
-// Scalar — /scalar/v1
-app.MapOpenApi();
-app.MapScalarApiReference(options =>
-{
-    options.WithTitle("ChainKit Tron SDK Sandbox");
-    options.WithTheme(ScalarTheme.BluePlanet);
-});
+app.UseSwaggerUI(c => c.DocumentTitle = "ChainKit Tron SDK Sandbox");
 
 // ============================================================
 //  Wallet — 錢包建立與地址工具
@@ -161,12 +154,19 @@ app.MapPost("/api/wallet/from-private-key", (PrivateKeyRequest req) =>
 
 app.MapGet("/api/account/{address}/balance", async (string address, [FromQuery] string[]? trc20, TronClient tron) =>
 {
-    var result = await tron.GetBalanceAsync(address, trc20 ?? []);
+    // 標準格式：?trc20=合約1&trc20=合約2
+    // Scalar workaround：?trc20=合約1,合約2（Scalar 不支援重複參數，見 scalar/scalar#3054）
+    var contracts = (trc20 ?? [])
+        .SelectMany(s => s.Split(','))
+        .Select(s => s.Trim())
+        .Where(s => s.Length > 0)
+        .ToArray();
+    var result = await tron.GetBalanceAsync(address, contracts);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("Account")
 .WithSummary("查詢 TRX 餘額 + TRC20 餘額")
-.WithDescription("回傳 TRX 餘額，可選帶入 trc20 合約地址查詢 TRC20 餘額。例：?trc20=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+.WithDescription("回傳 TRX 餘額，可選帶入 trc20 合約地址查詢 TRC20 餘額。支援 ?trc20=合約1&trc20=合約2 或 ?trc20=合約1,合約2");
 
 app.MapGet("/api/account/{address}/resources", async (string address, TronClient tron) =>
 {
@@ -223,16 +223,16 @@ app.MapPost("/api/transfer/trx", async (TrxTransferRequest req, TronClient tron)
 //  TRC20 — 代幣操作
 // ============================================================
 
-app.MapPost("/api/trc20/transfer", async (Trc20TransferRequest req, TronClient tron) =>
+app.MapGet("/api/trc20/{contractAddress}/info", async (
+    string contractAddress, ITronProvider provider) =>
 {
-    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    var result = await tron.TransferTrc20Async(
-        account, req.ContractAddress, req.ToAddress, req.Amount, req.Decimals);
+    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    var result = await contract.GetTokenInfoAsync();
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
-.WithSummary("TRC20 轉帳（高階）")
-.WithDescription("高階 API：ABI 編碼 → TriggerSmartContract → 簽名 → 廣播");
+.WithSummary("代幣基礎資訊")
+.WithDescription("一次查詢 name、symbol、decimals、totalSupply（四個合約呼叫並行）");
 
 app.MapGet("/api/trc20/{contractAddress}/name", async (
     string contractAddress, ITronProvider provider) =>
@@ -300,7 +300,7 @@ app.MapGet("/api/trc20/{contractAddress}/allowance/{owner}/{spender}", async (
 .WithSummary("授權額度（低階）")
 .WithDescription("呼叫合約 allowance(owner, spender) 方法");
 
-app.MapPost("/api/trc20/contract-transfer", async (Trc20ContractTransferRequest req, ITronProvider provider) =>
+app.MapPost("/api/trc20/transfer", async (Trc20ContractTransferRequest req, ITronProvider provider) =>
 {
     var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
     using var contract = new Trc20Contract(provider, req.ContractAddress, account);
@@ -308,8 +308,8 @@ app.MapPost("/api/trc20/contract-transfer", async (Trc20ContractTransferRequest 
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
-.WithSummary("TRC20 轉帳（低階）")
-.WithDescription("透過 Trc20Contract 直接呼叫 transfer(to, amount)");
+.WithSummary("TRC20 轉帳")
+.WithDescription("ABI 編碼 → TriggerSmartContract → 簽名 → 廣播。Decimals 自動從合約查詢");
 
 app.MapPost("/api/trc20/approve", async (Trc20ApproveRequest req, ITronProvider provider) =>
 {
@@ -593,7 +593,6 @@ app.Run();
 // ============================================================
 
 record TrxTransferRequest(string PrivateKey, string ToAddress, decimal Amount);
-record Trc20TransferRequest(string PrivateKey, string ContractAddress, string ToAddress, decimal Amount, int Decimals);
 record StakeRequest(string PrivateKey, decimal TrxAmount, ResourceType Resource);
 record DelegateRequest(string PrivateKey, string ReceiverAddress, decimal TrxAmount, ResourceType Resource, bool LockPeriod = false);
 record UndelegateRequest(string PrivateKey, string ReceiverAddress, decimal TrxAmount, ResourceType Resource);

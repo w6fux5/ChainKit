@@ -31,6 +31,9 @@ public interface ITronProvider
     Task<IReadOnlyList<TransactionInfoDto>> GetAccountTransactionsAsync(
         string address, int limit = 10, CancellationToken ct = default);
 
+    // Smart contract queries
+    Task<SmartContractInfo> GetContractAsync(string contractAddress, CancellationToken ct = default);
+
     // Delegation resource queries (Stake 2.0)
     Task<DelegatedResourceIndex> GetDelegatedResourceAccountIndexAsync(
         string address, CancellationToken ct = default);

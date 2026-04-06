@@ -2,6 +2,16 @@ namespace ChainKit.Tron.Models;
 
 public record Trc20BalanceInfo(decimal RawBalance, decimal? Balance, string Symbol, int Decimals);
 
+/// <summary>
+/// Basic TRC20 token metadata returned by <see cref="Contracts.Trc20Contract.GetTokenInfoAsync"/>.
+/// </summary>
+public record Trc20TokenInfo(string Name, string Symbol, int Decimals, decimal TotalSupply, string OriginAddress);
+
+/// <summary>
+/// Smart contract information returned by /wallet/getcontract.
+/// </summary>
+public record SmartContractInfo(string OriginAddress, string ContractAddress, string? Abi);
+
 public record BalanceInfo(decimal TrxBalance, IReadOnlyDictionary<string, Trc20BalanceInfo> Trc20Balances);
 
 // Low-level DTOs (used by ITronProvider)

@@ -172,41 +172,6 @@ public class TronClientTests
         Assert.Contains("Amount must be positive", result.Error!.Message);
     }
 
-    [Fact]
-    public async Task TransferTrc20Async_NegativeAmount_ReturnsFail()
-    {
-        var account = TronAccount.FromPrivateKey(TestPrivateKey);
-
-        var result = await _client.TransferTrc20Async(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
-            "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", -10m, 6);
-
-        Assert.False(result.Success);
-        Assert.Contains("Amount must be positive", result.Error!.Message);
-    }
-
-    [Fact]
-    public async Task TransferTrc20Async_ZeroAmount_ReturnsFail()
-    {
-        var account = TronAccount.FromPrivateKey(TestPrivateKey);
-
-        var result = await _client.TransferTrc20Async(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
-            "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 0m, 6);
-
-        Assert.False(result.Success);
-        Assert.Contains("Amount must be positive", result.Error!.Message);
-    }
-
-    [Fact]
-    public async Task TransferTrc20Async_InvalidDecimals_ReturnsFail()
-    {
-        var account = TronAccount.FromPrivateKey(TestPrivateKey);
-
-        var result = await _client.TransferTrc20Async(account, "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
-            "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 100m, -1);
-
-        Assert.False(result.Success);
-        Assert.Contains("Invalid decimals", result.Error!.Message);
-    }
 
     [Fact]
     public async Task StakeTrxAsync_OverflowAmount_ReturnsFail()

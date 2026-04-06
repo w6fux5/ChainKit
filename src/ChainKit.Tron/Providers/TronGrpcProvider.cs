@@ -82,6 +82,10 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         MethodType.Unary, "protocol.Wallet", "GetDelegatedResourceV2",
         ByteArrayMarshaller, ByteArrayMarshaller);
 
+    private static readonly Method<byte[], byte[]> GetContractMethod = new(
+        MethodType.Unary, "protocol.Wallet", "GetContract",
+        ByteArrayMarshaller, ByteArrayMarshaller);
+
     // --- gRPC Method descriptors for WalletSolidity service ---
 
     private static readonly Method<byte[], byte[]> GetTransactionInfoByIdMethod = new(
@@ -367,6 +371,17 @@ public class TronGrpcProvider : ITronProvider, IDisposable
 
         var response = await CallFullNodeAsync(GetDelegatedResourceV2Method, request, ct);
         return ParseDelegatedResources(response);
+    }
+
+    public async Task<SmartContractInfo> GetContractAsync(string contractAddress, CancellationToken ct = default)
+    {
+        var hexAddress = NormalizeToHex(contractAddress);
+        var addressBytes = Convert.FromHexString(hexAddress);
+        // BytesMessage: field 1 (bytes) = contract address
+        var request = EncodeField(1, addressBytes);
+
+        var response = await CallFullNodeAsync(GetContractMethod, request, ct);
+        return ParseSmartContractInfo(response);
     }
 
     // --- Channel & call helpers ---
@@ -822,6 +837,21 @@ public class TronGrpcProvider : ITronProvider, IDisposable
         }
 
         return results;
+    }
+
+    private static SmartContractInfo ParseSmartContractInfo(byte[] data)
+    {
+        if (data.Length == 0)
+            return new SmartContractInfo("", "", null);
+
+        // SmartContract: field 1 (bytes origin_address), field 2 (bytes contract_address), field 3 (abi)
+        var originBytes = ParseBytesField(data, 1);
+        var contractBytes = ParseBytesField(data, 2);
+
+        var origin = originBytes.Length > 0 ? Convert.ToHexString(originBytes).ToLowerInvariant() : "";
+        var contract = contractBytes.Length > 0 ? Convert.ToHexString(contractBytes).ToLowerInvariant() : "";
+
+        return new SmartContractInfo(origin, contract, null);
     }
 
     // --- Shared helpers ---

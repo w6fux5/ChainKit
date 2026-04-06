@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Providers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ChainKit.Tron.Contracts;
 
@@ -18,6 +20,12 @@ public record TokenInfo(string Symbol, int Decimals);
 public class TokenInfoCache
 {
     private readonly ConcurrentDictionary<string, TokenInfo> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ILogger _logger;
+
+    public TokenInfoCache(ILogger? logger = null)
+    {
+        _logger = logger ?? NullLogger.Instance;
+    }
 
     // Well-known mainnet TRC20 contract addresses (hex with 41-prefix, lowercase).
     // USDT: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
@@ -74,7 +82,7 @@ public class TokenInfoCache
 
     // --- Internal helpers ---
 
-    private static async Task<TokenInfo> ResolveFromContractAsync(
+    private async Task<TokenInfo> ResolveFromContractAsync(
         string contractHex, ITronProvider provider, CancellationToken ct)
     {
         string symbol = "";
@@ -87,7 +95,7 @@ public class TokenInfoCache
             if (symbolResult.Length >= 64)
                 symbol = AbiEncoder.DecodeString(symbolResult);
         }
-        catch { /* contract may not implement symbol() */ }
+        catch (Exception ex) { _logger.LogDebug(ex, "symbol() call failed for contract {Contract}", contractHex); }
 
         try
         {
@@ -96,7 +104,7 @@ public class TokenInfoCache
             if (decimalsResult.Length >= 32)
                 decimals = (int)AbiEncoder.DecodeUint256(decimalsResult);
         }
-        catch { /* contract may not implement decimals() */ }
+        catch (Exception ex) { _logger.LogDebug(ex, "decimals() call failed for contract {Contract}", contractHex); }
 
         return new TokenInfo(symbol, decimals);
     }

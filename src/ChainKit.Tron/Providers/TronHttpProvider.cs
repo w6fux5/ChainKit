@@ -5,6 +5,8 @@ using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol.Protobuf;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ChainKit.Tron.Providers;
 
@@ -14,10 +16,11 @@ public class TronHttpProvider : ITronProvider, IDisposable
     private readonly string _baseUrl;
     private readonly string _solidityUrl;
     private readonly bool _ownsHttpClient;
+    private readonly ILogger _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true
     };
@@ -40,28 +43,33 @@ public class TronHttpProvider : ITronProvider, IDisposable
     /// <param name="baseUrl">Full Node HTTP endpoint (e.g. http://your-server:8090).</param>
     /// <param name="solidityUrl">Solidity Node HTTP endpoint (e.g. http://your-server:8091). If null, uses baseUrl (TronGrid compatible).</param>
     /// <param name="apiKey">Optional TronGrid API key.</param>
-    public TronHttpProvider(string baseUrl, string? solidityUrl = null, string? apiKey = null)
+    public TronHttpProvider(string baseUrl, string? solidityUrl = null, string? apiKey = null,
+        ILogger<TronHttpProvider>? logger = null)
     {
         _baseUrl = baseUrl.TrimEnd('/');
         _solidityUrl = (solidityUrl ?? baseUrl).TrimEnd('/');
         _httpClient = new HttpClient();
         _ownsHttpClient = true;
+        _logger = logger ?? NullLogger<TronHttpProvider>.Instance;
         if (apiKey != null)
             _httpClient.DefaultRequestHeaders.Add("TRON-PRO-API-KEY", apiKey);
     }
 
-    public TronHttpProvider(TronNetworkConfig network, string? apiKey = null)
-        : this(network.HttpEndpoint, solidityUrl: null, apiKey) { }
+    public TronHttpProvider(TronNetworkConfig network, string? apiKey = null,
+        ILogger<TronHttpProvider>? logger = null)
+        : this(network.HttpEndpoint, solidityUrl: null, apiKey, logger) { }
 
     /// <summary>
     /// Creates a provider with an externally-managed HttpClient.
     /// </summary>
-    public TronHttpProvider(HttpClient httpClient, string baseUrl, string? solidityUrl = null)
+    public TronHttpProvider(HttpClient httpClient, string baseUrl, string? solidityUrl = null,
+        ILogger<TronHttpProvider>? logger = null)
     {
         _httpClient = httpClient;
         _baseUrl = baseUrl.TrimEnd('/');
         _solidityUrl = (solidityUrl ?? baseUrl).TrimEnd('/');
         _ownsHttpClient = false;
+        _logger = logger ?? NullLogger<TronHttpProvider>.Instance;
     }
 
     // --- ITronProvider implementation ---
@@ -419,8 +427,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
     {
         var hexFrom = NormalizeToHex(fromAddress);
         var hexTo = NormalizeToHex(toAddress);
-        var json = await PostRawAsync("/wallet/getdelegatedresourcev2",
-            $"{{\"fromAddress\":\"{hexFrom}\",\"toAddress\":\"{hexTo}\",\"visible\":false}}", ct);
+        var json = await PostAsync("/wallet/getdelegatedresourcev2",
+            new { fromAddress = hexFrom, toAddress = hexTo, visible = false }, ct);
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -439,6 +447,25 @@ public class TronHttpProvider : ITronProvider, IDisposable
         }
 
         return results;
+    }
+
+    public async Task<SmartContractInfo> GetContractAsync(string contractAddress, CancellationToken ct = default)
+    {
+        var hexAddress = NormalizeToHex(contractAddress);
+        var json = await PostAsync("/wallet/getcontract",
+            new { value = hexAddress, visible = false }, ct);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var originAddress = root.TryGetProperty("origin_address", out var originEl)
+            ? originEl.GetString() ?? "" : "";
+        var contractAddr = root.TryGetProperty("contract_address", out var addrEl)
+            ? addrEl.GetString() ?? "" : "";
+        var abi = root.TryGetProperty("abi", out var abiEl)
+            ? abiEl.GetRawText() : null;
+
+        return new SmartContractInfo(originAddress, contractAddr, abi);
     }
 
     // --- Private helpers ---
