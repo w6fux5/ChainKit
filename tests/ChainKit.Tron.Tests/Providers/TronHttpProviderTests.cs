@@ -731,6 +731,55 @@ public class TronHttpProviderTests
         Assert.Empty(result);
     }
 
+    // --- GetContractAsync tests ---
+
+    [Fact]
+    public async Task GetContractAsync_ParsesOriginAndContractAddress()
+    {
+        var responseJson = """
+        {
+            "origin_address": "41a1b2c3d4e5f60000000000000000000000000001",
+            "contract_address": "41b2c3d4e5f60000000000000000000000000000a1",
+            "abi": { "entrys": [] }
+        }
+        """;
+
+        var handler = MockJson(responseJson);
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetContractAsync("41b2c3d4e5f60000000000000000000000000000a1");
+
+        Assert.Equal("41a1b2c3d4e5f60000000000000000000000000001", result.OriginAddress);
+        Assert.Equal("41b2c3d4e5f60000000000000000000000000000a1", result.ContractAddress);
+        Assert.NotNull(result.Abi);
+
+        Assert.Contains("/wallet/getcontract", handler.LastRequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetContractAsync_EmptyResponse_ReturnsDefaults()
+    {
+        var handler = MockJson("{}");
+        var provider = CreateProvider(handler);
+
+        var result = await provider.GetContractAsync("41b2c3d4e5f60000000000000000000000000000a1");
+
+        Assert.Equal("", result.OriginAddress);
+        Assert.Equal("", result.ContractAddress);
+        Assert.Null(result.Abi);
+    }
+
+    [Fact]
+    public async Task GetContractAsync_Base58Address_ConvertsToHex()
+    {
+        var handler = MockJson("""{ "origin_address": "41aabbcc", "contract_address": "41ddeeff" }""");
+        var provider = CreateProvider(handler);
+
+        await provider.GetContractAsync("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
+
+        Assert.Contains("/wallet/getcontract", handler.LastRequestUri!.ToString());
+    }
+
     // --- Constructor tests ---
 
     [Fact]

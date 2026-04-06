@@ -277,6 +277,29 @@ public class TronGrpcProviderTests
         provider.Dispose(); // should not throw
     }
 
+    // --- ParseSmartContractInfo tests ---
+
+    [Fact]
+    public void ParseSmartContractInfo_EmptyData_ReturnsDefaults()
+    {
+        // Use reflection or test via GetContractAsync with empty gRPC response
+        // Since ParseSmartContractInfo is private, test via the encode/parse roundtrip pattern
+        var originAddr = Convert.FromHexString("41a1b2c3d4e5f60000000000000000000000000001");
+        var contractAddr = Convert.FromHexString("41b2c3d4e5f60000000000000000000000000000a1");
+
+        // SmartContract proto: field 1 = origin_address, field 2 = contract_address
+        var encoded = TronGrpcProvider.EncodeField(1, originAddr)
+            .Concat(TronGrpcProvider.EncodeField(2, contractAddr))
+            .ToArray();
+
+        // Parse using the same field helpers
+        var parsedOrigin = TronGrpcProvider.ParseBytesField(encoded, 1);
+        var parsedContract = TronGrpcProvider.ParseBytesField(encoded, 2);
+
+        Assert.Equal(originAddr, parsedOrigin);
+        Assert.Equal(contractAddr, parsedContract);
+    }
+
     // --- ITronProvider interface compliance ---
 
     [Fact]

@@ -33,6 +33,83 @@ public class Trc20ContractTests
         SetupDecimalsReturn(TokenDecimals);
     }
 
+    // === GetTokenInfoAsync ===
+
+    [Fact]
+    public async Task GetTokenInfoAsync_ReturnsAllFields()
+    {
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("name()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(EncodeString("Tether USD"));
+
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("symbol()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(EncodeString("USDT"));
+
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("totalSupply()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(EncodeUint256(new BigInteger(1_000_000_000_000))); // 1M USDT with 6 decimals
+
+        _provider.GetContractAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new SmartContractInfo("41aabbccddee00000000000000000000000000000001", ContractAddr, null));
+
+        var result = await _contract.GetTokenInfoAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal("Tether USD", result.Data!.Name);
+        Assert.Equal("USDT", result.Data.Symbol);
+        Assert.Equal(6, result.Data.Decimals);
+        Assert.Equal(1_000_000m, result.Data.TotalSupply);
+        Assert.NotEmpty(result.Data.OriginAddress);
+    }
+
+    [Fact]
+    public async Task GetTokenInfoAsync_ProviderThrows_ReturnsFail()
+    {
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("name()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("node error"));
+
+        var result = await _contract.GetTokenInfoAsync();
+
+        Assert.False(result.Success);
+        Assert.Contains("node error", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task GetTokenInfoAsync_ZeroDecimals_ReturnsTotalSupplyRaw()
+    {
+        SetupDecimalsReturn(0);
+
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("name()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(EncodeString("NFT Token"));
+
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("symbol()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(EncodeString("NFT"));
+
+        _provider.TriggerConstantContractAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is("totalSupply()"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(EncodeUint256(new BigInteger(100)));
+
+        _provider.GetContractAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new SmartContractInfo("41aabb", ContractAddr, null));
+
+        var result = await _contract.GetTokenInfoAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(0, result.Data!.Decimals);
+        Assert.Equal(100m, result.Data.TotalSupply);
+    }
+
     // === Constructor ===
 
     [Fact]
