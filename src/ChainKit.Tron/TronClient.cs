@@ -612,13 +612,15 @@ public class TronClient : IDisposable
                     TronErrorCode.Unknown, "Network resource data unavailable");
             }
 
-            // Formula: resource = (stakedTrx / totalStaked) × totalLimit
-            // So: resourcePerTrx = totalLimit / (totalStaked / SunPerTrx) = totalLimit * SunPerTrx / totalStaked
-            var resourcePerTrx = (decimal)totalLimit * SunPerTrx / totalStaked;
-            var trxPerResource = totalStaked / ((decimal)totalLimit * SunPerTrx);
+            // TotalEnergyWeight / TotalNetWeight 單位是 TRX（非 Sun）
+            // Formula: resource = (myTrx / totalStakedTrx) × totalLimit
+            // So: resourcePerTrx = totalLimit / totalStakedTrx
+            var resourcePerTrx = (decimal)totalLimit / totalStaked;
+            var trxPerResource = (decimal)totalStaked / totalLimit;
+            var totalStakedTrx = (decimal)totalStaked;
 
             return TronResult<ResourceExchangeRate>.Ok(new ResourceExchangeRate(
-                resource, resourcePerTrx, trxPerResource, totalStaked, totalLimit));
+                resource, resourcePerTrx, trxPerResource, totalStakedTrx, totalLimit));
         }
         catch (Exception ex)
         {

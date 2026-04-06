@@ -1262,25 +1262,27 @@ public class TronClientTests
     [Fact]
     public async Task GetResourceExchangeRateAsync_Energy_ReturnsRate()
     {
+        // TotalEnergyWeight 單位是 TRX（非 Sun）
         _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AccountResourceInfo(0, 0, 0, 0, 0, 0,
                 NetworkTotalEnergyLimit: 180_000_000_000,
-                NetworkTotalEnergyWeight: 50_000_000_000_000)); // 50M TRX staked (in Sun)
+                NetworkTotalEnergyWeight: 50_000_000_000)); // 50B TRX staked
 
         var result = await _client.GetResourceExchangeRateAsync(ResourceType.Energy);
 
         Assert.True(result.Success);
         Assert.Equal(ResourceType.Energy, result.Data!.Resource);
-        Assert.True(result.Data.ResourcePerTrx > 0);
-        Assert.True(result.Data.TrxPerResource > 0);
 
-        // 1 TRX = 1M Sun. Rate = 180B * 1M / 50T = 3600
-        Assert.Equal(3600m, result.Data.ResourcePerTrx);
+        // Rate = 180B / 50B = 3.6 Energy per TRX
+        Assert.Equal(3.6m, result.Data.ResourcePerTrx);
 
-        // Bidirectional: 100 TRX → 360000 Energy
-        Assert.Equal(360_000m, result.Data.EstimateResource(100m));
-        // Bidirectional: 360000 Energy → ~100 TRX
-        Assert.InRange(result.Data.EstimateTrx(360_000), 99.99m, 100.01m);
+        // Bidirectional: 100 TRX → 360 Energy
+        Assert.Equal(360m, result.Data.EstimateResource(100m));
+        // Bidirectional: 360 Energy → ~100 TRX
+        Assert.InRange(result.Data.EstimateTrx(360), 99.99m, 100.01m);
+
+        // NetworkTotalStakedTrx 應為 TRX 單位
+        Assert.Equal(50_000_000_000m, result.Data.NetworkTotalStakedTrx);
     }
 
     [Fact]
@@ -1289,13 +1291,14 @@ public class TronClientTests
         _provider.GetAccountResourceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AccountResourceInfo(0, 0, 0, 0, 0, 0,
                 NetworkTotalBandwidthLimit: 43_200_000_000,
-                NetworkTotalBandwidthWeight: 20_000_000_000_000));
+                NetworkTotalBandwidthWeight: 20_000_000_000));
 
         var result = await _client.GetResourceExchangeRateAsync(ResourceType.Bandwidth);
 
         Assert.True(result.Success);
         Assert.Equal(ResourceType.Bandwidth, result.Data!.Resource);
-        Assert.True(result.Data.ResourcePerTrx > 0);
+        // Rate = 43.2B / 20B = 2.16 Bandwidth per TRX
+        Assert.Equal(2.16m, result.Data.ResourcePerTrx);
     }
 
     [Fact]

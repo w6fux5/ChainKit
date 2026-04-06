@@ -20,7 +20,7 @@ public record ResourceExchangeRate(
     ResourceType Resource,
     decimal ResourcePerTrx,
     decimal TrxPerResource,
-    long NetworkTotalStaked,
+    decimal NetworkTotalStakedTrx,
     long NetworkTotalResourceLimit)
 {
     /// <summary>Estimates how much resource you get for the given TRX amount.</summary>
