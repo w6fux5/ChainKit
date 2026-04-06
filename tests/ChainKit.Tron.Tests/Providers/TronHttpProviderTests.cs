@@ -669,7 +669,7 @@ public class TronHttpProviderTests
         Assert.Equal("41b2c3d4e5f60000000000000000000000000000a1", result.ToAddresses[0]);
         Assert.Single(result.FromAddresses);
 
-        Assert.Contains("/wallet/getdelegatedresourceaccountindexV2", handler.LastRequestUri!.ToString());
+        Assert.Contains("/wallet/getdelegatedresourceaccountindexv2", handler.LastRequestUri!.ToString());
     }
 
     [Fact]
@@ -715,7 +715,7 @@ public class TronHttpProviderTests
         Assert.Equal(5000000, result[0].FrozenBalanceForBandwidth);
         Assert.Equal(3000000, result[0].FrozenBalanceForEnergy);
 
-        Assert.Contains("/wallet/getdelegatedresourceV2", handler.LastRequestUri!.ToString());
+        Assert.Contains("/wallet/getdelegatedresourcev2", handler.LastRequestUri!.ToString());
     }
 
     [Fact]

@@ -4,12 +4,6 @@ public record Trc20BalanceInfo(decimal RawBalance, decimal? Balance, string Symb
 
 public record BalanceInfo(decimal TrxBalance, IReadOnlyDictionary<string, Trc20BalanceInfo> Trc20Balances);
 
-public record AccountOverview(
-    string Address, decimal TrxBalance,
-    long Bandwidth, long BandwidthUsed,
-    long Energy, long EnergyUsed,
-    IReadOnlyList<TronTransactionDetail> RecentTransactions);
-
 // Low-level DTOs (used by ITronProvider)
 
 /// <summary>

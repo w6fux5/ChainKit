@@ -93,7 +93,6 @@ Sandbox 的每個 endpoint 直接對應 SDK 方法，請求參數和回傳結構
 | Endpoint | SDK 方法 | 回傳型別 |
 |----------|----------|----------|
 | `GET /api/account/{address}/balance?trc20=...` | `TronClient.GetBalanceAsync(address, trc20Contracts)` | `BalanceInfo` |
-| `GET /api/account/{address}/overview` | `TronClient.GetAccountOverviewAsync(address)` | `AccountOverview` |
 | `GET /api/account/{address}/resources` | `TronClient.GetResourceInfoAsync(address)` | `ResourceInfo` |
 | `GET /api/account/{address}/raw` | `ITronProvider.GetAccountAsync(address)` | `AccountInfo` |
 | `GET /api/account/{address}/raw-resource` | `ITronProvider.GetAccountResourceAsync(address)` | `AccountResourceInfo` |

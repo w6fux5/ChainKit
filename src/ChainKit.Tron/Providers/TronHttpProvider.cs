@@ -382,7 +382,7 @@ public class TronHttpProvider : ITronProvider, IDisposable
         string address, CancellationToken ct = default)
     {
         var hexAddress = NormalizeToHex(address);
-        var json = await PostAsync("/wallet/getdelegatedresourceaccountindexV2",
+        var json = await PostAsync("/wallet/getdelegatedresourceaccountindexv2",
             new { value = hexAddress, visible = false }, ct);
 
         using var doc = JsonDocument.Parse(json);
@@ -419,8 +419,8 @@ public class TronHttpProvider : ITronProvider, IDisposable
     {
         var hexFrom = NormalizeToHex(fromAddress);
         var hexTo = NormalizeToHex(toAddress);
-        var json = await PostAsync("/wallet/getdelegatedresourceV2",
-            new { fromAddress = hexFrom, toAddress = hexTo, visible = false }, ct);
+        var json = await PostRawAsync("/wallet/getdelegatedresourcev2",
+            $"{{\"fromAddress\":\"{hexFrom}\",\"toAddress\":\"{hexTo}\",\"visible\":false}}", ct);
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;

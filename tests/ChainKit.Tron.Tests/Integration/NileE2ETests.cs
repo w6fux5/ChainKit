@@ -94,18 +94,6 @@ public class NileHighLevelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetAccountOverviewAsync_ReturnsAddressAndBalance()
-    {
-        var result = await _client.GetAccountOverviewAsync(NileTestConstants.Account1Address);
-        Assert.True(result.Success, result.Error?.Message ?? "unknown error");
-
-        var overview = result.Data!;
-        Assert.Equal(NileTestConstants.Account1Address, overview.Address);
-        Assert.True(overview.TrxBalance > 0, $"Expected TRX balance > 0, got {overview.TrxBalance}");
-        Assert.True(overview.Bandwidth >= 0, "Bandwidth should be >= 0");
-    }
-
-    [Fact]
     public async Task GetResourceInfoAsync_ReturnsBandwidthAndEnergy()
     {
         var result = await _client.GetResourceInfoAsync(NileTestConstants.Account1Address);

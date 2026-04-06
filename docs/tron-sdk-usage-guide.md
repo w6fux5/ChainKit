@@ -372,29 +372,6 @@ if (result.Success)
 }
 ```
 
-### 帳戶總覽
-
-一次查詢帳戶的 TRX 餘額、資源使用、最近交易：
-
-```csharp
-var result = await client.GetAccountOverviewAsync("TYourAddress...");
-
-if (result.Success)
-{
-    var overview = result.Data!;
-    Console.WriteLine($"地址:       {overview.Address}");
-    Console.WriteLine($"TRX 餘額:   {overview.TrxBalance} TRX");
-    Console.WriteLine($"頻寬:       {overview.BandwidthUsed} / {overview.Bandwidth}");
-    Console.WriteLine($"能量:       {overview.EnergyUsed} / {overview.Energy}");
-
-    Console.WriteLine($"\n最近 {overview.RecentTransactions.Count} 筆交易:");
-    foreach (var tx in overview.RecentTransactions)
-    {
-        Console.WriteLine($"  {tx.TxId[..16]}... [{tx.Type}] {tx.Status} {tx.Amount} TRX");
-    }
-}
-```
-
 ### 查詢資源狀態
 
 ```csharp

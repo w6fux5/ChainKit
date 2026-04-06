@@ -168,15 +168,6 @@ app.MapGet("/api/account/{address}/balance", async (string address, [FromQuery] 
 .WithSummary("查詢 TRX 餘額 + TRC20 餘額")
 .WithDescription("回傳 TRX 餘額，可選帶入 trc20 合約地址查詢 TRC20 餘額。例：?trc20=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
 
-app.MapGet("/api/account/{address}/overview", async (string address, TronClient tron) =>
-{
-    var result = await tron.GetAccountOverviewAsync(address);
-    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
-})
-.WithTags("Account")
-.WithSummary("帳戶總覽")
-.WithDescription("TRX 餘額 + Bandwidth/Energy 使用量 + 近期交易");
-
 app.MapGet("/api/account/{address}/resources", async (string address, TronClient tron) =>
 {
     var result = await tron.GetResourceInfoAsync(address);
