@@ -1,10 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <RootNamespace>ChainKit.Tron</RootNamespace>
+    <PackageId>W6fux5.ChainKit.Tron</PackageId>
+    <Description>Tron blockchain SDK for ChainKit — TRX transfers, TRC20 tokens, staking, transaction watching</Description>
   </PropertyGroup>
 
   <ItemGroup>

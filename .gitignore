@@ -18,8 +18,10 @@ Thumbs.db
 .DS_Store
 
 ## Claude Code
-.claude/plans/
-**/settings.local.json
+.claude/
+
+## NuGet
+*.nupkg
 
 ## Coverage
 coverage-results/

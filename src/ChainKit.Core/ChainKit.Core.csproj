@@ -1,10 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <RootNamespace>ChainKit.Core</RootNamespace>
+    <PackageId>W6fux5.ChainKit.Core</PackageId>
+    <Description>Core abstractions and utilities for ChainKit multi-chain SDK (ChainResult, Hex/Base58 tools)</Description>
   </PropertyGroup>
 
 </Project>
