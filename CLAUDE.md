@@ -133,7 +133,7 @@
 
 - `docs/tron-sdk-usage-guide.md` — Tron 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
 - `docs/evm-sdk-usage-guide.md` — EVM 使用指南（安裝、範例、EvmClient、Erc20Contract、Watcher、錯誤處理）
-- `docs/decisions/` — 架構決策紀錄（ADR 001-014），檔名即標題
+- `docs/decisions/` — 架構決策紀錄（ADR 001-015），檔名即標題
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
