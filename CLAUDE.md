@@ -16,7 +16,7 @@
   - `Converters/` — TokenConverter（金額轉換）
   - `Extensions/` — HexExtensions、ByteExtensions
 - `src/ChainKit.Tron/` — Tron SDK
-  - `Crypto/` — TronAccount、Mnemonic、TronAddress、TronSigner、AbiEncoder、Keccak256、TronConverter
+  - `Crypto/` — TronAccount、TronAddress、TronSigner、TronAbiEncoder、TronConverter
   - `Protocol/` — Protobuf 定義、TransactionBuilder、TransactionUtils
   - `Providers/` — ITronProvider、TronHttpProvider、TronGrpcProvider、TronNetwork
   - `Contracts/` — Trc20Contract、Trc20Template、TokenInfoCache
@@ -63,11 +63,11 @@
 
 - 命名：PascalCase（public）、_camelCase（private field）
 - 所有 public API 需有 XML doc comment
-- 高階 API 回傳 `TronResult<T>`，業務錯誤不 throw，只有 SDK 內部 bug 才 throw
+- 高階 API 回傳 `TronResult<T>` / `EvmResult<T>`，業務錯誤不 throw，只有 SDK 內部 bug 才 throw
 - Token 金額同時提供 RawAmount（永遠正確）+ Amount?（null = 無法轉換）
 - TRX 金額：高階用 decimal TRX，低階用 long Sun（1 TRX = 1,000,000 Sun）
 - 所有金額輸入驗證正數 + overflow 保護
-- 金額計算用 `TronConverter.DecimalPow10`（decimal 迴圈乘法），禁用 `Math.Pow`（double 精度損失）
+- 金額計算用 `TokenConverter.DecimalPow10`（decimal 迴圈乘法），禁用 `Math.Pow`（double 精度損失）
 - `JsonDocument.Parse` 必須用 `using` dispose（歸還 ArrayPool 記憶體）
 - IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）
 - IAsyncDisposable：TronTransactionWatcher
@@ -113,7 +113,7 @@
 - JSON-RPC 回傳值全部是 hex 格式（0x-prefixed），解析時需處理 BigInteger unsigned parsing
 - Anvil 測試用 chainId=31337，預設帳戶有 10000 ETH
 - EVM 地址全部使用 0x-prefixed hex（小寫），驗證用 EIP-55 checksum
-- .NET 內建 SHA3_256 是 NIST SHA3（padding 0x06），不是 Ethereum 的 Keccak-256（padding 0x01），不能混用（Core 共用 Keccak256 元件）
+- Keccak-256 注意事項同 Tron（見 Tron 開發注意事項）
 
 ## 關鍵設計決策
 
@@ -125,9 +125,9 @@
 - 交易狀態三態（Unconfirmed/Confirmed/Failed），確認機制見 ADR 006
 - Watcher 雙向監聽 + 三階段生命週期，見 ADR 007 和 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`
 - `ChainKit.Evm` 單一專案支援所有 EVM 鏈，用 `EvmNetworkConfig` 的 ChainId 區分
-- 不依賴 Nethereum — RLP 自己寫，Keccak256/ABI/Secp256k1 用 Core 共用元件
 - EVM 交易確認：receipt status + block confirmations（預設 12）
-- 詳見 `docs/decisions/001-tron-sdk-architecture.md`
+- CI/CD：GitHub Actions 在 push `v*` tag 時自動 build → test → pack → push NuGet（見 ADR 015）
+- 詳見 `docs/decisions/001-tron-sdk-architecture.md`、`docs/decisions/014-evm-sdk-architecture.md`
 
 ## 文件
 
