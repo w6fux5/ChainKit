@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ChainKit.Evm</RootNamespace>
+    <PackageId>W6fux5.ChainKit.Evm</PackageId>
+    <Description>EVM-compatible blockchain SDK for ChainKit — Ethereum, Polygon, and other EVM chains</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ChainKit.Evm.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ChainKit.Core\ChainKit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
+    <PackageReference Include="NBitcoin.Secp256k1" Version="3.2.0" />
+  </ItemGroup>
+
+</Project>

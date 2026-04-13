@@ -2,10 +2,12 @@
   <Folder Name="/src/">
     <Project Path="src/ChainKit.Core/ChainKit.Core.csproj" />
     <Project Path="src/ChainKit.Tron/ChainKit.Tron.csproj" />
+    <Project Path="src/ChainKit.Evm/ChainKit.Evm.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ChainKit.Core.Tests/ChainKit.Core.Tests.csproj" />
     <Project Path="tests/ChainKit.Tron.Tests/ChainKit.Tron.Tests.csproj" />
+    <Project Path="tests/ChainKit.Evm.Tests/ChainKit.Evm.Tests.csproj" />
   </Folder>
   <Folder Name="/sandbox/">
     <Project Path="sandbox/ChainKit.Sandbox/ChainKit.Sandbox.csproj" />
