@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using ChainKit.Core;
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using NBitcoin;
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ChainKit.Core.Crypto;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Protocol.Protobuf;

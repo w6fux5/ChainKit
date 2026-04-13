@@ -1,4 +1,4 @@
-namespace ChainKit.Tron.Crypto;
+namespace ChainKit.Core.Crypto;
 
 /// <summary>
 /// Keccak-256 hash function (pre-NIST variant, padding byte 0x01).

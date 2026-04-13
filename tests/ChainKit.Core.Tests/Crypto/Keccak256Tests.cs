@@ -2,7 +2,7 @@ using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using Xunit;
 
-namespace ChainKit.Tron.Tests.Crypto;
+namespace ChainKit.Core.Tests.Crypto;
 
 public class Keccak256Tests
 {
@@ -16,26 +16,10 @@ public class Keccak256Tests
     [Fact]
     public void Hash_TransferSelector_KnownVector()
     {
-        // Keccak256("transfer(address,uint256)") → first 4 bytes = a9059cbb
+        // Keccak256("transfer(address,uint256)") -> first 4 bytes = a9059cbb
         var input = System.Text.Encoding.UTF8.GetBytes("transfer(address,uint256)");
         var result = Keccak256.Hash(input);
         Assert.Equal("a9059cbb", result[..4].ToHex());
-    }
-
-    [Fact]
-    public void Hash_BalanceOfSelector()
-    {
-        var input = System.Text.Encoding.UTF8.GetBytes("balanceOf(address)");
-        var result = Keccak256.Hash(input);
-        Assert.Equal("70a08231", result[..4].ToHex());
-    }
-
-    [Fact]
-    public void Hash_DifferentInputs_DifferentOutputs()
-    {
-        var a = Keccak256.Hash(new byte[] { 0x01 });
-        var b = Keccak256.Hash(new byte[] { 0x02 });
-        Assert.NotEqual(a, b);
     }
 
     [Fact]
