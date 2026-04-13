@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Numerics;
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
@@ -405,7 +406,7 @@ public class TronTransactionWatcher : IAsyncDisposable
         {
             // Bytes [4..36] = address (padded to 32 bytes)
             // Bytes [36..68] = uint256 amount
-            recipient = AbiEncoder.DecodeAddress(callData[4..36]);
+            recipient = TronAbiEncoder.DecodeAddress(callData[4..36]);
             var rawAmount = AbiEncoder.DecodeUint256(callData[36..68]);
             // TRC20 amounts are in the token's smallest unit;
             // we return raw value here — caller can divide by 10^decimals

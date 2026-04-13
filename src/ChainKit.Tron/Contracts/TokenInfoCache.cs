@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using ChainKit.Core.Crypto;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Providers;
 using Microsoft.Extensions.Logging;

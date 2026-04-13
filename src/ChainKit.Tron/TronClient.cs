@@ -1,4 +1,5 @@
 using System.Numerics;
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
@@ -236,7 +237,7 @@ public class TronClient : IDisposable
                 try
                 {
                     var contractHex = ResolveHexAddress(contract);
-                    var data = AbiEncoder.EncodeBalanceOf(hexAddress);
+                    var data = TronAbiEncoder.EncodeBalanceOf(hexAddress);
                     var result = await Provider.TriggerConstantContractAsync(
                         hexAddress, contractHex, "balanceOf(address)", data[4..], ct);
 

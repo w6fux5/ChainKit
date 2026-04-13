@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using NSubstitute;
+using ChainKit.Core.Crypto;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 using ChainKit.Tron.Providers;
@@ -67,7 +68,7 @@ public class TronTransactionWatcherTests
     private static byte[] BuildTrc20RawData(string contractAddress, string recipientHex, long tokenAmount)
     {
         // Build ABI-encoded transfer(address,uint256) call data
-        var callData = AbiEncoder.EncodeTransfer(recipientHex, new System.Numerics.BigInteger(tokenAmount));
+        var callData = TronAbiEncoder.EncodeTransfer(recipientHex, new System.Numerics.BigInteger(tokenAmount));
         var txInfo = new BlockTransactionInfo("", "TriggerSmartContract", "", "",
             0, contractAddress, callData);
         return PollingBlockStream.BuildRawData(txInfo);

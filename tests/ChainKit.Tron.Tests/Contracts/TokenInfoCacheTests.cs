@@ -1,6 +1,7 @@
 using System.Numerics;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using ChainKit.Core.Crypto;
 using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Providers;

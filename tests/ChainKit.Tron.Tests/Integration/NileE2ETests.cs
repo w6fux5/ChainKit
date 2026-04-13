@@ -1,4 +1,5 @@
 using System.Numerics;
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
@@ -321,7 +322,7 @@ public class NileLowLevelTests : IAsyncLifetime
     [Fact]
     public async Task TriggerConstantContractAsync_BalanceOf_ReturnsBalance()
     {
-        var param = AbiEncoder.EncodeAddress(_account1.HexAddress);
+        var param = TronAbiEncoder.EncodeAddress(_account1.HexAddress);
         var result = await _provider.TriggerConstantContractAsync(
             _account1.HexAddress,
             NileTestConstants.TtteContractHex,

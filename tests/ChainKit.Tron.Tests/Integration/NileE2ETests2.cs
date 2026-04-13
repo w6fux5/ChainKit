@@ -72,7 +72,7 @@ public class NileLowLevelTrc20TransferTests : IAsyncLifetime
         // Step 1: Build ABI data for transfer(address,uint256)
         var recipientHex = TronAddress.ToHex(NileTestConstants.Account2Address);
         var rawAmount = new BigInteger(1_000_000); // 1 TTTE (6 decimals)
-        var abiData = AbiEncoder.EncodeTransfer(recipientHex, rawAmount);
+        var abiData = TronAbiEncoder.EncodeTransfer(recipientHex, rawAmount);
 
         // Step 2: Call TriggerSmartContractAsync to get unsigned transaction
         // TriggerSmartContractAsync expects parameters without the 4-byte selector

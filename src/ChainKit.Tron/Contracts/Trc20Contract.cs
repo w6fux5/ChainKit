@@ -1,4 +1,5 @@
 using System.Numerics;
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
@@ -130,7 +131,7 @@ public class Trc20Contract : IDisposable
         try
         {
             var addrHex = ResolveHexAddress(address);
-            var param = AbiEncoder.EncodeAddress(addrHex);
+            var param = TronAbiEncoder.EncodeAddress(addrHex);
             var result = await CallConstantAsync("balanceOf(address)", param, ct);
             var raw = AbiEncoder.DecodeUint256(result);
             var decimals = await GetDecimalsInternalAsync(ct);
@@ -149,7 +150,7 @@ public class Trc20Contract : IDisposable
         {
             var ownerHex = ResolveHexAddress(owner);
             var spenderHex = ResolveHexAddress(spender);
-            var param = ConcatBytes(AbiEncoder.EncodeAddress(ownerHex), AbiEncoder.EncodeAddress(spenderHex));
+            var param = ConcatBytes(TronAbiEncoder.EncodeAddress(ownerHex), TronAbiEncoder.EncodeAddress(spenderHex));
             var result = await CallConstantAsync("allowance(address,address)", param, ct);
             var raw = AbiEncoder.DecodeUint256(result);
             var decimals = await GetDecimalsInternalAsync(ct);
@@ -171,7 +172,7 @@ public class Trc20Contract : IDisposable
             var toHex = ResolveHexAddress(to);
             var decimals = await GetDecimalsInternalAsync(ct);
             var rawAmount = ToRawAmount(amount, decimals);
-            var data = AbiEncoder.EncodeTransfer(toHex, rawAmount);
+            var data = TronAbiEncoder.EncodeTransfer(toHex, rawAmount);
 
             return await ExecuteWriteAsync("transfer(address,uint256)", data, to, amount, ct);
         }
@@ -189,7 +190,7 @@ public class Trc20Contract : IDisposable
             var spenderHex = ResolveHexAddress(spender);
             var decimals = await GetDecimalsInternalAsync(ct);
             var rawAmount = ToRawAmount(amount, decimals);
-            var data = AbiEncoder.EncodeApprove(spenderHex, rawAmount);
+            var data = TronAbiEncoder.EncodeApprove(spenderHex, rawAmount);
 
             return await ExecuteWriteAsync("approve(address,uint256)", data, spender, amount, ct);
         }
@@ -207,7 +208,7 @@ public class Trc20Contract : IDisposable
             var toHex = ResolveHexAddress(to);
             var decimals = await GetDecimalsInternalAsync(ct);
             var rawAmount = ToRawAmount(amount, decimals);
-            var data = AbiEncoder.EncodeMint(toHex, rawAmount);
+            var data = TronAbiEncoder.EncodeMint(toHex, rawAmount);
 
             return await ExecuteWriteAsync("mint(address,uint256)", data, to, amount, ct);
         }
@@ -224,7 +225,7 @@ public class Trc20Contract : IDisposable
         {
             var decimals = await GetDecimalsInternalAsync(ct);
             var rawAmount = ToRawAmount(amount, decimals);
-            var data = AbiEncoder.EncodeBurn(rawAmount);
+            var data = TronAbiEncoder.EncodeBurn(rawAmount);
 
             return await ExecuteWriteAsync("burn(uint256)", data, _ownerAccount.Address, amount, ct);
         }
@@ -242,7 +243,7 @@ public class Trc20Contract : IDisposable
             var fromHex = ResolveHexAddress(from);
             var decimals = await GetDecimalsInternalAsync(ct);
             var rawAmount = ToRawAmount(amount, decimals);
-            var data = AbiEncoder.EncodeBurnFrom(fromHex, rawAmount);
+            var data = TronAbiEncoder.EncodeBurnFrom(fromHex, rawAmount);
 
             return await ExecuteWriteAsync("burnFrom(address,uint256)", data, from, amount, ct);
         }

@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Text;
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
-using ChainKit.Tron.Crypto;
 using ChainKit.Tron.Models;
 
 namespace ChainKit.Tron.Contracts;
