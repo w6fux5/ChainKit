@@ -1,4 +1,8 @@
 using System.Threading.Channels;
+using ChainKit.Evm;
+using ChainKit.Evm.Contracts;
+using ChainKit.Evm.Crypto;
+using ChainKit.Evm.Providers;
 using ChainKit.Tron;
 using ChainKit.Tron.Contracts;
 using ChainKit.Tron.Crypto;
@@ -15,9 +19,9 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new()
     {
-        Title = "ChainKit Tron SDK",
+        Title = "ChainKit SDK",
         Version = "v1",
-        Description = "Tron 區塊鏈 SDK 測試介面"
+        Description = "多鏈區塊鏈 SDK 測試介面（Tron + EVM）"
     });
     c.TagActionsBy(api => [api.GroupName ?? api.ActionDescriptor.EndpointMetadata
         .OfType<TagsAttribute>().FirstOrDefault()?.Tags.First() ?? "Other"]);
@@ -75,7 +79,7 @@ var app = builder.Build();
 
 // Swagger UI — /swagger（預設測試介面）
 app.UseSwagger();
-app.UseSwaggerUI(c => c.DocumentTitle = "ChainKit Tron SDK Sandbox");
+app.UseSwaggerUI(c => c.DocumentTitle = "ChainKit SDK Sandbox");
 
 // ============================================================
 //  Wallet — 錢包建立與地址工具
@@ -595,12 +599,105 @@ app.MapGet("/api/watcher/events", async (WatcherEventBus bus, HttpContext ctx) =
 .WithSummary("事件串流（SSE）")
 .WithDescription("Server-Sent Events 即時推送所有 watcher 事件（TRX/TRC20 收發、確認、失敗）。用瀏覽器或 curl 連線即可接收");
 
+// ============================================================
+//  EVM — EVM-compatible chain endpoints
+// ============================================================
+
+app.MapGet("/api/evm/balance/{address}", async (string address, [FromQuery] string? network) =>
+{
+    var net = ResolveEvmNetwork(network);
+    using var provider = new EvmHttpProvider(net);
+    using var client = new EvmClient(provider, net);
+    var result = await client.GetBalanceAsync(address);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("EVM")
+.WithSummary("Native balance")
+.WithDescription("Query native currency balance (ETH/POL). Use ?network= to select chain (default: sepolia)");
+
+app.MapPost("/api/evm/transfer", async (EvmTransferRequest req, [FromQuery] string? network) =>
+{
+    var net = ResolveEvmNetwork(network);
+    using var provider = new EvmHttpProvider(net);
+    using var client = new EvmClient(provider, net);
+    var account = EvmAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    var result = await client.TransferAsync(account, req.ToAddress, req.Amount);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("EVM")
+.WithSummary("Native transfer")
+.WithDescription("Transfer native currency (ETH/POL). Amount is in native currency unit. Use ?network= to select chain");
+
+app.MapGet("/api/evm/transaction/{txHash}", async (string txHash, [FromQuery] string? network) =>
+{
+    var net = ResolveEvmNetwork(network);
+    using var provider = new EvmHttpProvider(net);
+    using var client = new EvmClient(provider, net);
+    var result = await client.GetTransactionDetailAsync(txHash);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("EVM")
+.WithSummary("Transaction detail")
+.WithDescription("Query transaction detail by hash. Merges tx data + receipt into unified view");
+
+app.MapGet("/api/evm/erc20/{contract}/info", async (string contract, [FromQuery] string? network) =>
+{
+    var net = ResolveEvmNetwork(network);
+    using var provider = new EvmHttpProvider(net);
+    using var client = new EvmClient(provider, net);
+    using var erc20 = client.GetErc20Contract(contract);
+    var result = await erc20.GetTokenInfoAsync();
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("EVM")
+.WithSummary("ERC20 token info")
+.WithDescription("Query name, symbol, decimals, totalSupply in parallel");
+
+app.MapGet("/api/evm/erc20/{contract}/balance/{address}", async (
+    string contract, string address, [FromQuery] string? network) =>
+{
+    var net = ResolveEvmNetwork(network);
+    using var provider = new EvmHttpProvider(net);
+    using var client = new EvmClient(provider, net);
+    using var erc20 = client.GetErc20Contract(contract);
+    var result = await erc20.BalanceOfAsync(address);
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("EVM")
+.WithSummary("ERC20 balance")
+.WithDescription("Query ERC20 token balance for an address");
+
+app.MapGet("/api/evm/block-number", async ([FromQuery] string? network) =>
+{
+    var net = ResolveEvmNetwork(network);
+    using var provider = new EvmHttpProvider(net);
+    using var client = new EvmClient(provider, net);
+    var result = await client.GetBlockNumberAsync();
+    return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
+})
+.WithTags("EVM")
+.WithSummary("Latest block number")
+.WithDescription("Query the latest block number on the selected network");
+
 app.Run();
+
+// ============================================================
+//  EVM Helpers
+// ============================================================
+
+static EvmNetworkConfig ResolveEvmNetwork(string? network) => network?.ToLowerInvariant() switch
+{
+    "ethereum-mainnet" or "ethereum" or "mainnet" => EvmNetwork.EthereumMainnet,
+    "polygon-mainnet" or "polygon" => EvmNetwork.PolygonMainnet,
+    "polygon-amoy" or "amoy" => EvmNetwork.PolygonAmoy,
+    _ => EvmNetwork.Sepolia,
+};
 
 // ============================================================
 //  Request DTOs
 // ============================================================
 
+record EvmTransferRequest(string PrivateKey, string ToAddress, decimal Amount);
 record TrxTransferRequest(string PrivateKey, string ToAddress, decimal Amount);
 record StakeRequest(string PrivateKey, decimal TrxAmount, ResourceType Resource);
 record DelegateRequest(string PrivateKey, string ReceiverAddress, decimal TrxAmount, ResourceType Resource, bool LockPeriod = false);

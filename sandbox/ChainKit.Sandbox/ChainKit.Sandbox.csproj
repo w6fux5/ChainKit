@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\ChainKit.Evm\ChainKit.Evm.csproj" />
     <ProjectReference Include="..\..\src\ChainKit.Tron\ChainKit.Tron.csproj" />
   </ItemGroup>
 
