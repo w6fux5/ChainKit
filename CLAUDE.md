@@ -14,7 +14,7 @@
 - `src/ChainKit.Core/` — 跨鏈共用（ChainResult、IAccount、ITransaction、Hex/Base58 工具）
   - `Crypto/` — Keccak256、AbiEncoder、Mnemonic（跨鏈共用密碼學元件）
   - `Converters/` — TokenConverter（金額轉換）
-  - `Extensions/` — HexExtensions、ByteExtensions
+  - `Extensions/` — HexExtensions、Base58Extensions
 - `src/ChainKit.Tron/` — Tron SDK
   - `Crypto/` — TronAccount、TronAddress、TronSigner、TronAbiEncoder、TronConverter
   - `Protocol/` — Protobuf 定義、TransactionBuilder、TransactionUtils
@@ -41,12 +41,17 @@
 
 - 環境需求：.NET 10 SDK、npm（Solidity 編譯用）
 - Build: `dotnet build`
-- Unit tests: `dotnet test --filter "Category!=Integration"`
+- Unit tests: `dotnet test --filter "Category!=Integration&Category!=E2E"`
 - E2E tests: `dotnet test --filter "Category=Integration"`
 - All tests: `dotnet test`
 - Sandbox: `dotnet run --project sandbox/ChainKit.Sandbox`（Swagger UI: http://localhost:5178/swagger）
 - Sandbox（背景啟動）: `dotnet run --project sandbox/ChainKit.Sandbox -- --urls "http://localhost:5178" &`
-- Coverage: `rm -rf coverage-results coverage-report && dotnet test --filter "Category!=Integration" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
+- Coverage: `rm -rf coverage-results coverage-report && dotnet test --filter "Category!=Integration&Category!=E2E" --collect:"XPlat Code Coverage" --results-directory ./coverage-results && reportgenerator -reports:"coverage-results/*/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary && cat coverage-report/Summary.txt`
+
+### NuGet 發佈
+
+- 更新版本：`src/Directory.Build.props` 的 `<Version>`
+- 發佈：`git tag vX.Y.Z && git push origin vX.Y.Z`（GitHub Actions 自動 build → test → push NuGet）
 
 ### E2E 測試環境變數（可選，有預設值）
 
