@@ -1,3 +1,4 @@
+using ChainKit.Core.Crypto;
 using ChainKit.Core.Extensions;
 using ChainKit.Tron.Crypto;
 using Xunit;

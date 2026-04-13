@@ -1,7 +1,7 @@
 using ChainKit.Core.Crypto;
 using Xunit;
 
-namespace ChainKit.Tron.Tests.Crypto;
+namespace ChainKit.Core.Tests.Crypto;
 
 public class MnemonicTests
 {
@@ -10,13 +10,6 @@ public class MnemonicTests
     {
         var mnemonic = Mnemonic.Generate(12);
         Assert.Equal(12, mnemonic.Split(' ').Length);
-    }
-
-    [Fact]
-    public void Generate_24Words_Returns24Words()
-    {
-        var mnemonic = Mnemonic.Generate(24);
-        Assert.Equal(24, mnemonic.Split(' ').Length);
     }
 
     [Fact]

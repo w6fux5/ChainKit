@@ -6,4 +6,8 @@
     <Description>Core abstractions and utilities for ChainKit multi-chain SDK (ChainResult, Hex/Base58 tools)</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NBitcoin" Version="9.0.5" />
+  </ItemGroup>
+
 </Project>

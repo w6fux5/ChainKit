@@ -1,4 +1,4 @@
-namespace ChainKit.Tron.Crypto;
+namespace ChainKit.Core.Crypto;
 
 public static class Mnemonic
 {
