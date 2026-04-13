@@ -293,6 +293,8 @@ Console.WriteLine($"地址: {account.Address}");
 ### 從助記詞恢復
 
 ```csharp
+using ChainKit.Core.Crypto;  // Mnemonic 在 Core（跨鏈共用）
+
 // 產生助記詞
 var mnemonic = Mnemonic.Generate(12);        // 12 個英文單字
 Console.WriteLine($"助記詞: {mnemonic}");
@@ -924,8 +926,9 @@ watcher.OnTransactionFailed += (s, e) => Console.WriteLine($"Failed: {e.TxId} - 
 ### Hex / Base58 / ABI
 
 ```csharp
+using ChainKit.Core.Crypto;      // AbiEncoder（通用部分）在 Core
 using ChainKit.Core.Extensions;
-using ChainKit.Tron.Crypto;
+using ChainKit.Tron.Crypto;      // TronAbiEncoder（地址相關）在 Tron
 
 // Hex 轉換
 byte[] bytes = "41abcdef".FromHex();
@@ -940,10 +943,14 @@ string hexAddr = TronAddress.ToHex("T...");      // "41..."
 string b58Addr = TronAddress.ToBase58("41...");   // "T..."
 bool valid = TronAddress.IsValid("T...");
 
-// ABI 編碼/解碼
+// ABI 編碼/解碼（通用方法在 Core）
 byte[] selector = AbiEncoder.EncodeFunctionSelector("transfer(address,uint256)");
 BigInteger value = AbiEncoder.DecodeUint256(data);
 string text = AbiEncoder.DecodeString(data);
+
+// Tron 地址 ABI 編碼（Tron 特有的 41 前綴）
+byte[] addrEncoded = TronAbiEncoder.EncodeAddress("41...");
+string addrDecoded = TronAbiEncoder.DecodeAddress(data);
 ```
 
 ---
