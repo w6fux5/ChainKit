@@ -132,11 +132,13 @@
 ## 文件
 
 - `docs/tron-sdk-usage-guide.md` — 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
-- `docs/decisions/` — 架構決策紀錄（ADR 001-013），檔名即標題
+- `docs/decisions/` — 架構決策紀錄（ADR 001-014），檔名即標題
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
 - `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md` — Watcher 生命週期增強設計
 - `docs/tron-sdk-code-review-2026-04-04.md` — Code Review 報告
 - `docs/superpowers/plans/` — 實作計畫（4 份）
+- `docs/superpowers/specs/2026-04-13-evm-sdk-design.md` — EVM SDK 設計規格
+- `docs/superpowers/plans/2026-04-13-evm-sdk-implementation.md` — EVM SDK 實作計畫
 - `sandbox/README.md` — Sandbox 使用說明（啟動、設定、API 對照表、測試流程）
