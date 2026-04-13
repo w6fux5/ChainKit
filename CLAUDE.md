@@ -1,6 +1,6 @@
 # ChainKit
 
-多鏈 SDK，供內部系統使用。目前支援的鏈：Tron
+多鏈 SDK，供內部系統使用。目前支援的鏈：Tron、EVM（Ethereum、Polygon 等 EVM 相容鏈）
 
 ## 技術棧
 
@@ -12,6 +12,9 @@
 ## 專案結構
 
 - `src/ChainKit.Core/` — 跨鏈共用（ChainResult、IAccount、ITransaction、Hex/Base58 工具）
+  - `Crypto/` — Keccak256、AbiEncoder、Mnemonic（跨鏈共用密碼學元件）
+  - `Converters/` — TokenConverter（金額轉換）
+  - `Extensions/` — HexExtensions、ByteExtensions
 - `src/ChainKit.Tron/` — Tron SDK
   - `Crypto/` — TronAccount、Mnemonic、TronAddress、TronSigner、AbiEncoder、Keccak256、TronConverter
   - `Protocol/` — Protobuf 定義、TransactionBuilder、TransactionUtils
@@ -20,8 +23,17 @@
   - `Watching/` — ITronBlockStream、PollingBlockStream、ZmqBlockStream、TronTransactionWatcher
   - `Models/` — TronResult、所有 DTO、Enums
   - `TronClient.cs` — 高階 Facade
+- `src/ChainKit.Evm/` — EVM SDK（Ethereum、Polygon 等 EVM 相容鏈）
+  - `Crypto/` — EvmAccount、EvmSigner、EvmAddress、EvmAbiEncoder
+  - `Protocol/` — RlpEncoder、TransactionBuilder、TransactionUtils
+  - `Providers/` — IEvmProvider、EvmHttpProvider、EvmNetwork
+  - `Contracts/` — Erc20Contract、TokenInfoCache
+  - `Watching/` — IEvmBlockStream、PollingBlockStream、WebSocketBlockStream、EvmTransactionWatcher
+  - `Models/` — EvmResult、所有 DTO、Enums
+  - `EvmClient.cs` — 高階 Facade
 - `tests/ChainKit.Core.Tests/` — Core 單元測試
 - `tests/ChainKit.Tron.Tests/` — Tron 單元測試 + E2E 測試
+- `tests/ChainKit.Evm.Tests/` — EVM 單元測試 + Integration 測試
 - `contracts/` — Solidity 原始碼和編譯輸出（TRC20 模板）
 - `sandbox/ChainKit.Sandbox/` — Web API 測試介面（Swagger UI），串接所有 SDK API
 
@@ -40,6 +52,12 @@
 
 - `TRON_TEST_PRIVATE_KEY_1` — Nile 測試帳戶1 私鑰
 - `TRON_TEST_PRIVATE_KEY_2` — Nile 測試帳戶2 私鑰
+
+### EVM Integration 測試（Anvil）
+
+- 需要 Anvil（Foundry 本地節點）：`curl -L https://foundry.paradigm.xyz | bash && foundryup`
+- 執行 Integration 測試：`dotnet test --filter "Category=Integration"`
+- Anvil 由 `AnvilFixture` 自動啟動/停止，不需手動管理
 
 ## 慣例
 
@@ -63,6 +81,12 @@
 - SDK 所有 public class 建構子接受 optional `ILogger<T>?`（預設 NullLogger），不是 breaking change
 - TRC20 所有操作統一走 `Trc20Contract`，`TronClient` 不包 TRC20 transfer（見 ADR 011）
 - Sandbox array query parameter 同時支援 `?trc20=a&trc20=b` 和 `?trc20=a,b`（逗號分隔 workaround）
+- ETH/POL 金額：高階用 decimal ETH/POL，低階用 BigInteger Wei（1 ETH = 10^18 Wei）
+- EVM 交易用 EIP-1559（Type 2）為預設，Legacy（EIP-155）為 fallback
+- ERC20 Transfer 偵測用 receipt logs（topic `0xddf252ad...`），不用 input data
+- ERC20 所有操作統一走 `Erc20Contract`，`EvmClient` 不包 ERC20 transfer
+- IDisposable：EvmClient、EvmHttpProvider、Erc20Contract、EvmAccount（清零私鑰）
+- IAsyncDisposable：EvmTransactionWatcher
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
 ## Tron 開發注意事項
@@ -81,6 +105,16 @@
 - Tron HTTP API 端點名稱**大小寫敏感**（如 `v2` 不能寫成 `V2`），錯誤時回傳 405（見 ADR 009）
 - `TronHttpProvider` 全域用 `CamelCase` 序列化（從 SnakeCaseLower 改過來，見 ADR 010）。現有 anonymous object 的小寫開頭屬性不受影響
 
+## EVM 開發注意事項
+
+- 不依賴 Nethereum — RLP 自己寫，Keccak256/ABI/Secp256k1 用 Core 共用元件
+- EIP-1559 交易簽名：chainId + nonce + maxPriorityFeePerGas + maxFeePerGas + gasLimit + to + value + data + accessList
+- RLP 編碼：空字串/零值用 `0x80`，不是 `0x00`
+- JSON-RPC 回傳值全部是 hex 格式（0x-prefixed），解析時需處理 BigInteger unsigned parsing
+- Anvil 測試用 chainId=31337，預設帳戶有 10000 ETH
+- EVM 地址全部使用 0x-prefixed hex（小寫），驗證用 EIP-55 checksum
+- .NET 內建 SHA3_256 是 NIST SHA3（padding 0x06），不是 Ethereum 的 Keccak-256（padding 0x01），不能混用（Core 共用 Keccak256 元件）
+
 ## 關鍵設計決策
 
 - 單套件 per 鏈（內部使用，不拆多套件）
@@ -90,6 +124,9 @@
 - `ITronProvider.GetContractAsync()` 查詢合約部署者地址（origin_address）
 - 交易狀態三態（Unconfirmed/Confirmed/Failed），確認機制見 ADR 006
 - Watcher 雙向監聽 + 三階段生命週期，見 ADR 007 和 `docs/superpowers/specs/2026-04-04-watcher-lifecycle-design.md`
+- `ChainKit.Evm` 單一專案支援所有 EVM 鏈，用 `EvmNetworkConfig` 的 ChainId 區分
+- 不依賴 Nethereum — RLP 自己寫，Keccak256/ABI/Secp256k1 用 Core 共用元件
+- EVM 交易確認：receipt status + block confirmations（預設 12）
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`
 
 ## 文件
