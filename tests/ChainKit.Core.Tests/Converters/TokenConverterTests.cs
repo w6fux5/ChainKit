@@ -47,4 +47,18 @@ public class TokenConverterTests
     {
         Assert.Equal(100m, TokenConverter.ToTokenAmount(new BigInteger(100), 0));
     }
+
+    [Fact]
+    public void TryToTokenAmount_Normal_ReturnsValue()
+    {
+        Assert.Equal(20.2m, TokenConverter.TryToTokenAmount(new BigInteger(20_200_000), 6));
+    }
+
+    [Fact]
+    public void TryToTokenAmount_OverflowValue_ReturnsNull()
+    {
+        // Value larger than decimal.MaxValue (~7.9 × 10^28)
+        var huge = BigInteger.Pow(10, 30);
+        Assert.Null(TokenConverter.TryToTokenAmount(huge, 0));
+    }
 }

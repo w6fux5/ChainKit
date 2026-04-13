@@ -99,7 +99,8 @@ public static class EvmTransactionBuilder
             );
         }
 
-        var v = (long)signature[64];
+        var recId = (long)signature[64];
+        var v = chainId * 2 + 35 + recId;
         var r = new BigInteger(signature[..32], isUnsigned: true, isBigEndian: true);
         var s = new BigInteger(signature[32..64], isUnsigned: true, isBigEndian: true);
 

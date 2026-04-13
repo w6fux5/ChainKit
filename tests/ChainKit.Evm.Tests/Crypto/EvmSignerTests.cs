@@ -27,20 +27,20 @@ public class EvmSignerTests
     }
 
     [Fact]
-    public void SignLegacy_VIncludesChainId()
+    public void SignLegacy_ReturnsRawRecoveryId()
     {
         var hash = Keccak256.Hash(new byte[] { 0x01 });
-        var sig = EvmSigner.SignLegacy(hash, TestPrivateKey, 1);
-        Assert.True(sig[64] == 37 || sig[64] == 38, $"Expected v=37 or v=38, got v={sig[64]}");
+        var sig = EvmSigner.SignLegacy(hash, TestPrivateKey);
+        Assert.True(sig[64] == 0 || sig[64] == 1, $"Expected recId=0 or 1, got {sig[64]}");
     }
 
     [Fact]
-    public void SignLegacy_DifferentChainId_DifferentV()
+    public void SignLegacy_SameResultAsSignTyped()
     {
         var hash = Keccak256.Hash(new byte[] { 0x01 });
-        var sigEth = EvmSigner.SignLegacy(hash, TestPrivateKey, 1);
-        var sigPoly = EvmSigner.SignLegacy(hash, TestPrivateKey, 137);
-        Assert.NotEqual(sigEth[64], sigPoly[64]);
+        var sigLegacy = EvmSigner.SignLegacy(hash, TestPrivateKey);
+        var sigTyped = EvmSigner.SignTyped(hash, TestPrivateKey);
+        Assert.Equal(sigTyped, sigLegacy);
     }
 
     [Fact]

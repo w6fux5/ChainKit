@@ -463,6 +463,58 @@ public class Trc20ContractTests
         return tx;
     }
 
+    // === Amount Validation ===
+
+    [Fact]
+    public async Task TransferAsync_ZeroAmount_ReturnsFail()
+    {
+        var result = await _contract.TransferAsync(_account.HexAddress, 0m);
+        Assert.False(result.Success);
+        Assert.Contains("InvalidAmount", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task TransferAsync_NegativeAmount_ReturnsFail()
+    {
+        var result = await _contract.TransferAsync(_account.HexAddress, -10m);
+        Assert.False(result.Success);
+        Assert.Contains("InvalidAmount", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_ZeroAmount_ReturnsFail()
+    {
+        var result = await _contract.ApproveAsync(_account.HexAddress, 0m);
+        Assert.False(result.Success);
+        Assert.Contains("InvalidAmount", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task MintAsync_ZeroAmount_ReturnsFail()
+    {
+        var result = await _contract.MintAsync(_account.HexAddress, 0m);
+        Assert.False(result.Success);
+        Assert.Contains("InvalidAmount", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task BurnAsync_ZeroAmount_ReturnsFail()
+    {
+        var result = await _contract.BurnAsync(0m);
+        Assert.False(result.Success);
+        Assert.Contains("InvalidAmount", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task BurnFromAsync_ZeroAmount_ReturnsFail()
+    {
+        var result = await _contract.BurnFromAsync(_account.HexAddress, 0m);
+        Assert.False(result.Success);
+        Assert.Contains("InvalidAmount", result.Error!.Code);
+    }
+
+    // === Helpers ===
+
     /// <summary>
     /// ABI-encodes a string value (offset + length + padded data).
     /// </summary>

@@ -25,16 +25,18 @@ public static class EvmSigner
 
     /// <summary>
     /// Signs a transaction hash for EIP-155 legacy transactions.
-    /// Returns 65 bytes: [r(32) | s(32) | v(1)] where v = chainId * 2 + 35 + recId.
+    /// Returns 65 bytes: [r(32) | s(32) | recId(1)] where recId is 0 or 1.
+    /// The EIP-155 v-value (chainId * 2 + 35 + recId) is computed by the transaction builder,
+    /// not here, to avoid byte overflow for chainId &gt; 110.
     /// </summary>
-    public static byte[] SignLegacy(byte[] txHash, byte[] privateKey, long chainId)
+    public static byte[] SignLegacy(byte[] txHash, byte[] privateKey)
     {
         var ecKey = ECPrivKey.Create(privateKey);
         if (!ecKey.TrySignRecoverable(txHash, out var sig) || sig is null)
             throw new InvalidOperationException("Failed to create recoverable signature.");
         var output = new byte[65];
         sig.WriteToSpanCompact(output.AsSpan(0, 64), out var recId);
-        output[64] = (byte)(chainId * 2 + 35 + recId);
+        output[64] = (byte)recId;
         return output;
     }
 

@@ -20,6 +20,7 @@ public static class TokenConverter
 
     /// <summary>
     /// Converts raw token amount to human-readable amount (divide by 10^decimals).
+    /// Throws <see cref="OverflowException"/> if the value exceeds decimal range (~7.9 × 10^28).
     /// Example: rawAmount=1000000, decimals=6 → 1.0
     /// </summary>
     public static decimal ToTokenAmount(BigInteger rawAmount, int decimals)
@@ -28,6 +29,15 @@ public static class TokenConverter
         var divisor = BigInteger.Pow(10, decimals);
         var wholePart = BigInteger.DivRem(rawAmount, divisor, out var remainder);
         return (decimal)wholePart + (decimal)remainder / (decimal)divisor;
+    }
+
+    /// <summary>
+    /// Safe version of <see cref="ToTokenAmount"/>. Returns null if the value exceeds decimal range.
+    /// </summary>
+    public static decimal? TryToTokenAmount(BigInteger rawAmount, int decimals)
+    {
+        try { return ToTokenAmount(rawAmount, decimals); }
+        catch (OverflowException) { return null; }
     }
 
     /// <summary>

@@ -170,7 +170,7 @@ public sealed class EvmTransactionWatcher : IAsyncDisposable
         // Native transfer detection (value > 0)
         if (tx.Value > BigInteger.Zero && (fromWatched || toWatched))
         {
-            var amount = TokenConverter.ToTokenAmount(tx.Value, _network.Decimals);
+            var amount = TokenConverter.TryToTokenAmount(tx.Value, _network.Decimals);
 
             if (toWatched)
             {
@@ -184,14 +184,16 @@ public sealed class EvmTransactionWatcher : IAsyncDisposable
             }
         }
 
+        var hasErc20Log = HasWatchedErc20Log(tx);
+
         // ERC-20 Transfer log detection via receipt logs
-        if (fromWatched || toWatched || HasWatchedErc20Log(tx))
+        if (fromWatched || toWatched || hasErc20Log)
         {
             await DetectErc20TransfersAsync(tx, ct);
         }
 
         // Track for confirmation if any watched address is involved
-        if (fromWatched || toWatched || HasWatchedErc20Log(tx))
+        if (fromWatched || toWatched || hasErc20Log)
         {
             _unconfirmedTxs.TryAdd(tx.TxHash,
                 new PendingTx(tx.TxHash, block.BlockNumber, DateTimeOffset.UtcNow));
@@ -296,7 +298,7 @@ public sealed class EvmTransactionWatcher : IAsyncDisposable
                     {
                         symbol = tokenInfo.Symbol;
                         if (tokenInfo.Decimals > 0)
-                            convertedAmount = TokenConverter.ToTokenAmount(rawAmount, tokenInfo.Decimals);
+                            convertedAmount = TokenConverter.TryToTokenAmount(rawAmount, tokenInfo.Decimals);
                     }
                 }
                 catch (Exception ex)

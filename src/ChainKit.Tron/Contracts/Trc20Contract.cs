@@ -167,6 +167,8 @@ public class Trc20Contract : IDisposable
     /// <summary>Transfers tokens to the given address.</summary>
     public async Task<TronResult<TransferResult>> TransferAsync(string to, decimal amount, CancellationToken ct = default)
     {
+        if (amount <= 0)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
         {
             var toHex = ResolveHexAddress(to);
@@ -185,6 +187,8 @@ public class Trc20Contract : IDisposable
     /// <summary>Approves the spender to spend the given amount of tokens.</summary>
     public async Task<TronResult<TransferResult>> ApproveAsync(string spender, decimal amount, CancellationToken ct = default)
     {
+        if (amount <= 0)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
         {
             var spenderHex = ResolveHexAddress(spender);
@@ -203,6 +207,8 @@ public class Trc20Contract : IDisposable
     /// <summary>Mints new tokens to the given address (requires minter role).</summary>
     public async Task<TronResult<TransferResult>> MintAsync(string to, decimal amount, CancellationToken ct = default)
     {
+        if (amount <= 0)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
         {
             var toHex = ResolveHexAddress(to);
@@ -221,6 +227,8 @@ public class Trc20Contract : IDisposable
     /// <summary>Burns tokens from the caller's balance.</summary>
     public async Task<TronResult<TransferResult>> BurnAsync(decimal amount, CancellationToken ct = default)
     {
+        if (amount <= 0)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
         {
             var decimals = await GetDecimalsInternalAsync(ct);
@@ -238,6 +246,8 @@ public class Trc20Contract : IDisposable
     /// <summary>Burns tokens from the specified address (requires allowance).</summary>
     public async Task<TronResult<TransferResult>> BurnFromAsync(string from, decimal amount, CancellationToken ct = default)
     {
+        if (amount <= 0)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
         {
             var fromHex = ResolveHexAddress(from);

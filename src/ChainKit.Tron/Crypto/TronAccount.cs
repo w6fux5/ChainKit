@@ -6,7 +6,7 @@ using NBitcoin;
 
 namespace ChainKit.Tron.Crypto;
 
-public class TronAccount : IAccount, IDisposable
+public sealed class TronAccount : IAccount, IDisposable
 {
     public string Address { get; }
     public string HexAddress { get; }
