@@ -33,6 +33,16 @@ public sealed class EvmHttpProvider : IEvmProvider
         : this(network.RpcUrl, logger) { }
 
     /// <summary>
+    /// Creates a new provider with an externally-managed HttpClient. Intended for testing.
+    /// </summary>
+    public EvmHttpProvider(HttpClient httpClient, string rpcUrl, ILogger<EvmHttpProvider>? logger = null)
+    {
+        _rpcUrl = rpcUrl ?? throw new ArgumentNullException(nameof(rpcUrl));
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _logger = logger ?? NullLogger<EvmHttpProvider>.Instance;
+    }
+
+    /// <summary>
     /// Core JSON-RPC 2.0 request helper. All public methods delegate to this.
     /// </summary>
     private async Task<JsonElement> RpcAsync(string method, object[]? parameters = null, CancellationToken ct = default)
@@ -179,6 +189,17 @@ public sealed class EvmHttpProvider : IEvmProvider
 
         var result = await RpcAsync("eth_getLogs", new object[] { filter }, ct);
         return result.EnumerateArray().Select(e => e.Clone()).ToArray();
+    }
+
+    /// <summary>
+    /// Gets the chain ID reported by the node via eth_chainId.
+    /// </summary>
+    public async Task<long> GetChainIdAsync(CancellationToken ct = default)
+    {
+        var result = await RpcAsync("eth_chainId", null, ct);
+        var hex = result.GetString()
+            ?? throw new InvalidOperationException("eth_chainId returned null");
+        return ParseHexLong(hex);
     }
 
     /// <summary>
