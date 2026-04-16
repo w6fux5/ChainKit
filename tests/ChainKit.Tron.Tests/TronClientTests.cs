@@ -1045,8 +1045,7 @@ public class TronClientTests
     [Fact]
     public void GetTrc20Contract_ReturnsContractInstance()
     {
-        var account = TronAccount.FromPrivateKey(TestPrivateKey);
-        var contract = _client.GetTrc20Contract("41a614f803b6fd780986a42c78ec9c7f77e6ded13c", account);
+        var contract = _client.GetTrc20Contract("41a614f803b6fd780986a42c78ec9c7f77e6ded13c");
 
         Assert.NotNull(contract);
         Assert.IsType<Trc20Contract>(contract);

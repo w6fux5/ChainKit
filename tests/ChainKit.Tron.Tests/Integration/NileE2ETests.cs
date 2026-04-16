@@ -149,8 +149,8 @@ public class NileHighLevelTests : IAsyncLifetime
     public async Task Trc20Contract_TransferAsync_SendsAndSucceeds()
     {
         using var contract = new Trc20Contract(_client.Provider,
-            NileTestConstants.TtteContractAddress, _account1);
-        var result = await contract.TransferAsync(
+            NileTestConstants.TtteContractAddress);
+        var result = await contract.TransferAsync(_account1,
             NileTestConstants.Account2Address, 1m);
 
         Assert.True(result.Success, result.Error?.Message ?? "unknown error");
@@ -168,8 +168,8 @@ public class NileHighLevelTests : IAsyncLifetime
         if (_trc20TransferTxId is null)
         {
             using var contract = new Trc20Contract(_client.Provider,
-                NileTestConstants.TtteContractAddress, _account1);
-            var txResult = await contract.TransferAsync(
+                NileTestConstants.TtteContractAddress);
+            var txResult = await contract.TransferAsync(_account1,
                 NileTestConstants.Account2Address, 1m);
             Assert.True(txResult.Success, txResult.Error?.Message ?? "TRC20 transfer failed");
             _trc20TransferTxId = txResult.Data!.TxId;
@@ -479,7 +479,7 @@ public class NileTrc20ContractTests : IAsyncLifetime
     {
         _provider = new TronHttpProvider(NileTestConstants.NileHttpEndpoint);
         _account1 = NileTestConstants.GetAccount1();
-        _contract = new Trc20Contract(_provider, NileTestConstants.TtteContractAddress, _account1);
+        _contract = new Trc20Contract(_provider, NileTestConstants.TtteContractAddress);
         return Task.CompletedTask;
     }
 
@@ -533,7 +533,7 @@ public class NileTrc20ContractTests : IAsyncLifetime
     [Fact]
     public async Task TransferAsync_TransfersTokens()
     {
-        var result = await _contract.TransferAsync(NileTestConstants.Account2Address, 1m);
+        var result = await _contract.TransferAsync(_account1, NileTestConstants.Account2Address, 1m);
         Assert.True(result.Success, result.Error?.Message ?? "unknown error");
 
         var transfer = result.Data!;
@@ -617,7 +617,7 @@ public class NileContractDeployTests : IAsyncLifetime
     public async Task DeployedToken_ReadMetadata()
     {
         await EnsureDeployedAsync();
-        using var contract = _client.GetTrc20Contract(_deployedContractAddress!, _account1);
+        using var contract = _client.GetTrc20Contract(_deployedContractAddress!);
 
         // Verify Name
         var nameResult = await contract.NameAsync();
@@ -639,7 +639,7 @@ public class NileContractDeployTests : IAsyncLifetime
     public async Task DeployedToken_BalanceOf_ShowsInitialSupply()
     {
         await EnsureDeployedAsync();
-        using var contract = _client.GetTrc20Contract(_deployedContractAddress!, _account1);
+        using var contract = _client.GetTrc20Contract(_deployedContractAddress!);
 
         var balanceResult = await contract.BalanceOfAsync(NileTestConstants.Account1Address);
         Assert.True(balanceResult.Success, balanceResult.Error?.Message ?? "BalanceOf failed");
@@ -652,9 +652,9 @@ public class NileContractDeployTests : IAsyncLifetime
     public async Task DeployedToken_Transfer()
     {
         await EnsureDeployedAsync();
-        using var contract = _client.GetTrc20Contract(_deployedContractAddress!, _account1);
+        using var contract = _client.GetTrc20Contract(_deployedContractAddress!);
 
-        var result = await contract.TransferAsync(NileTestConstants.Account2Address, 10m);
+        var result = await contract.TransferAsync(_account1, NileTestConstants.Account2Address, 10m);
         Assert.True(result.Success, result.Error?.Message ?? "Transfer failed");
         Assert.False(string.IsNullOrEmpty(result.Data!.TxId), "TxId should not be empty");
     }
@@ -663,16 +663,16 @@ public class NileContractDeployTests : IAsyncLifetime
     public async Task DeployedToken_MintAndBurn()
     {
         await EnsureDeployedAsync();
-        using var contract = _client.GetTrc20Contract(_deployedContractAddress!, _account1);
+        using var contract = _client.GetTrc20Contract(_deployedContractAddress!);
 
         // Mint 500 more tokens
-        var mintResult = await contract.MintAsync(NileTestConstants.Account1Address, 500m);
+        var mintResult = await contract.MintAsync(_account1, NileTestConstants.Account1Address, 500m);
         Assert.True(mintResult.Success, mintResult.Error?.Message ?? "Mint failed");
 
         await Task.Delay(3000);
 
         // Burn 100 tokens
-        var burnResult = await contract.BurnAsync(100m);
+        var burnResult = await contract.BurnAsync(_account1, 100m);
         Assert.True(burnResult.Success, burnResult.Error?.Message ?? "Burn failed");
     }
 
@@ -680,10 +680,10 @@ public class NileContractDeployTests : IAsyncLifetime
     public async Task DeployedToken_ApproveAndAllowance()
     {
         await EnsureDeployedAsync();
-        using var contract = _client.GetTrc20Contract(_deployedContractAddress!, _account1);
+        using var contract = _client.GetTrc20Contract(_deployedContractAddress!);
 
         // Approve Account2 to spend 50 tokens
-        var approveResult = await contract.ApproveAsync(NileTestConstants.Account2Address, 50m);
+        var approveResult = await contract.ApproveAsync(_account1, NileTestConstants.Account2Address, 50m);
         Assert.True(approveResult.Success, approveResult.Error?.Message ?? "Approve failed");
 
         await Task.Delay(5000);

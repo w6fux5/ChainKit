@@ -230,7 +230,7 @@ app.MapPost("/api/transfer/trx", async (TrxTransferRequest req, TronClient tron)
 app.MapGet("/api/trc20/{contractAddress}/info", async (
     string contractAddress, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.GetTokenInfoAsync();
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -241,7 +241,7 @@ app.MapGet("/api/trc20/{contractAddress}/info", async (
 app.MapGet("/api/trc20/{contractAddress}/name", async (
     string contractAddress, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.NameAsync();
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -252,7 +252,7 @@ app.MapGet("/api/trc20/{contractAddress}/name", async (
 app.MapGet("/api/trc20/{contractAddress}/symbol", async (
     string contractAddress, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.SymbolAsync();
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -263,7 +263,7 @@ app.MapGet("/api/trc20/{contractAddress}/symbol", async (
 app.MapGet("/api/trc20/{contractAddress}/decimals", async (
     string contractAddress, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.DecimalsAsync();
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -274,7 +274,7 @@ app.MapGet("/api/trc20/{contractAddress}/decimals", async (
 app.MapGet("/api/trc20/{contractAddress}/total-supply", async (
     string contractAddress, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.TotalSupplyAsync();
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -285,7 +285,7 @@ app.MapGet("/api/trc20/{contractAddress}/total-supply", async (
 app.MapGet("/api/trc20/{contractAddress}/balance-of/{ownerAddress}", async (
     string contractAddress, string ownerAddress, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.BalanceOfAsync(ownerAddress);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -296,7 +296,7 @@ app.MapGet("/api/trc20/{contractAddress}/balance-of/{ownerAddress}", async (
 app.MapGet("/api/trc20/{contractAddress}/allowance/{owner}/{spender}", async (
     string contractAddress, string owner, string spender, ITronProvider provider) =>
 {
-    using var contract = new Trc20Contract(provider, contractAddress, TronAccount.Create());
+    using var contract = new Trc20Contract(provider, contractAddress);
     var result = await contract.AllowanceAsync(owner, spender);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
@@ -306,9 +306,9 @@ app.MapGet("/api/trc20/{contractAddress}/allowance/{owner}/{spender}", async (
 
 app.MapPost("/api/trc20/transfer", async (Trc20ContractTransferRequest req, ITronProvider provider) =>
 {
-    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    using var contract = new Trc20Contract(provider, req.ContractAddress, account);
-    var result = await contract.TransferAsync(req.ToAddress, req.Amount);
+    using var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    using var contract = new Trc20Contract(provider, req.ContractAddress);
+    var result = await contract.TransferAsync(account, req.ToAddress, req.Amount);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
@@ -317,9 +317,9 @@ app.MapPost("/api/trc20/transfer", async (Trc20ContractTransferRequest req, ITro
 
 app.MapPost("/api/trc20/approve", async (Trc20ApproveRequest req, ITronProvider provider) =>
 {
-    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    using var contract = new Trc20Contract(provider, req.ContractAddress, account);
-    var result = await contract.ApproveAsync(req.SpenderAddress, req.Amount);
+    using var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    using var contract = new Trc20Contract(provider, req.ContractAddress);
+    var result = await contract.ApproveAsync(account, req.SpenderAddress, req.Amount);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
@@ -328,9 +328,9 @@ app.MapPost("/api/trc20/approve", async (Trc20ApproveRequest req, ITronProvider 
 
 app.MapPost("/api/trc20/mint", async (Trc20MintRequest req, ITronProvider provider) =>
 {
-    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    using var contract = new Trc20Contract(provider, req.ContractAddress, account);
-    var result = await contract.MintAsync(req.ToAddress, req.Amount);
+    using var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    using var contract = new Trc20Contract(provider, req.ContractAddress);
+    var result = await contract.MintAsync(account, req.ToAddress, req.Amount);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
@@ -339,9 +339,9 @@ app.MapPost("/api/trc20/mint", async (Trc20MintRequest req, ITronProvider provid
 
 app.MapPost("/api/trc20/burn", async (Trc20BurnRequest req, ITronProvider provider) =>
 {
-    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    using var contract = new Trc20Contract(provider, req.ContractAddress, account);
-    var result = await contract.BurnAsync(req.Amount);
+    using var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    using var contract = new Trc20Contract(provider, req.ContractAddress);
+    var result = await contract.BurnAsync(account, req.Amount);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")
@@ -350,9 +350,9 @@ app.MapPost("/api/trc20/burn", async (Trc20BurnRequest req, ITronProvider provid
 
 app.MapPost("/api/trc20/burn-from", async (Trc20BurnFromRequest req, ITronProvider provider) =>
 {
-    var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
-    using var contract = new Trc20Contract(provider, req.ContractAddress, account);
-    var result = await contract.BurnFromAsync(req.FromAddress, req.Amount);
+    using var account = TronAccount.FromPrivateKey(Convert.FromHexString(req.PrivateKey));
+    using var contract = new Trc20Contract(provider, req.ContractAddress);
+    var result = await contract.BurnFromAsync(account, req.FromAddress, req.Amount);
     return result.Success ? Results.Ok(result.Data) : Results.BadRequest(result.Error);
 })
 .WithTags("TRC20")

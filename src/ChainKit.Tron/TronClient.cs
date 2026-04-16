@@ -696,10 +696,11 @@ public class TronClient : IDisposable
     // === Contract Helpers ===
 
     /// <summary>
-    /// Creates a <see cref="Trc20Contract"/> wrapper for interacting with an existing TRC20 token.
+    /// Creates a <see cref="Trc20Contract"/> handle for interacting with an existing TRC20 token.
+    /// The returned handle carries no identity; signer is supplied per write-call.
     /// </summary>
-    public Trc20Contract GetTrc20Contract(string contractAddress, TronAccount ownerAccount)
-        => new Trc20Contract(Provider, contractAddress, ownerAccount);
+    public Trc20Contract GetTrc20Contract(string contractAddress)
+        => new Trc20Contract(Provider, contractAddress);
 
     // === IDisposable ===
 

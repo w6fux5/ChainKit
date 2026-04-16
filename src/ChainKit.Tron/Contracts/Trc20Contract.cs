@@ -10,9 +10,9 @@ namespace ChainKit.Tron.Contracts;
 
 /// <summary>
 /// High-level wrapper for TRC20 token contract interaction.
-/// Provides both read-only queries (via triggerConstantContract) and
-/// write operations (via triggerSmartContract + sign + broadcast).
-/// Token decimals are fetched lazily and cached for amount conversion.
+/// Read-only queries use triggerConstantContract (no signing). Write operations take
+/// a TronAccount signer per call and sign + broadcast the transaction.
+/// One Trc20Contract instance is safe to share across many signers — it carries no identity.
 /// </summary>
 public class Trc20Contract : IDisposable
 {
@@ -21,15 +21,13 @@ public class Trc20Contract : IDisposable
     public string ContractAddress { get; }
 
     private readonly ITronProvider _provider;
-    private readonly TronAccount _ownerAccount;
     private readonly string _contractHex;
     private readonly SemaphoreSlim _decimalsLock = new(1, 1);
     private byte? _cachedDecimals;
 
-    public Trc20Contract(ITronProvider provider, string contractAddress, TronAccount ownerAccount)
+    public Trc20Contract(ITronProvider provider, string contractAddress)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _ownerAccount = ownerAccount ?? throw new ArgumentNullException(nameof(ownerAccount));
         ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         _contractHex = ResolveHexAddress(contractAddress);
     }
@@ -164,9 +162,11 @@ public class Trc20Contract : IDisposable
 
     // --- Write (triggerSmartContract -> sign -> broadcast) ---
 
-    /// <summary>Transfers tokens to the given address.</summary>
-    public async Task<TronResult<TransferResult>> TransferAsync(string to, decimal amount, CancellationToken ct = default)
+    /// <summary>Transfers tokens from the signer to the given address.</summary>
+    public async Task<TronResult<TransferResult>> TransferAsync(TronAccount signer, string to, decimal amount, CancellationToken ct = default)
     {
+        if (signer is null)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Signer is required");
         if (amount <= 0)
             return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
@@ -176,7 +176,7 @@ public class Trc20Contract : IDisposable
             var rawAmount = ToRawAmount(amount, decimals);
             var data = TronAbiEncoder.EncodeTransfer(toHex, rawAmount);
 
-            return await ExecuteWriteAsync("transfer(address,uint256)", data, to, amount, ct);
+            return await ExecuteWriteAsync(signer, "transfer(address,uint256)", data, to, amount, ct);
         }
         catch (Exception ex)
         {
@@ -184,9 +184,11 @@ public class Trc20Contract : IDisposable
         }
     }
 
-    /// <summary>Approves the spender to spend the given amount of tokens.</summary>
-    public async Task<TronResult<TransferResult>> ApproveAsync(string spender, decimal amount, CancellationToken ct = default)
+    /// <summary>Approves the spender to spend the given amount of tokens on behalf of the signer.</summary>
+    public async Task<TronResult<TransferResult>> ApproveAsync(TronAccount signer, string spender, decimal amount, CancellationToken ct = default)
     {
+        if (signer is null)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Signer is required");
         if (amount <= 0)
             return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
@@ -196,7 +198,7 @@ public class Trc20Contract : IDisposable
             var rawAmount = ToRawAmount(amount, decimals);
             var data = TronAbiEncoder.EncodeApprove(spenderHex, rawAmount);
 
-            return await ExecuteWriteAsync("approve(address,uint256)", data, spender, amount, ct);
+            return await ExecuteWriteAsync(signer, "approve(address,uint256)", data, spender, amount, ct);
         }
         catch (Exception ex)
         {
@@ -204,9 +206,11 @@ public class Trc20Contract : IDisposable
         }
     }
 
-    /// <summary>Mints new tokens to the given address (requires minter role).</summary>
-    public async Task<TronResult<TransferResult>> MintAsync(string to, decimal amount, CancellationToken ct = default)
+    /// <summary>Mints new tokens to the given address (requires signer to hold minter role).</summary>
+    public async Task<TronResult<TransferResult>> MintAsync(TronAccount signer, string to, decimal amount, CancellationToken ct = default)
     {
+        if (signer is null)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Signer is required");
         if (amount <= 0)
             return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
@@ -216,7 +220,7 @@ public class Trc20Contract : IDisposable
             var rawAmount = ToRawAmount(amount, decimals);
             var data = TronAbiEncoder.EncodeMint(toHex, rawAmount);
 
-            return await ExecuteWriteAsync("mint(address,uint256)", data, to, amount, ct);
+            return await ExecuteWriteAsync(signer, "mint(address,uint256)", data, to, amount, ct);
         }
         catch (Exception ex)
         {
@@ -224,9 +228,11 @@ public class Trc20Contract : IDisposable
         }
     }
 
-    /// <summary>Burns tokens from the caller's balance.</summary>
-    public async Task<TronResult<TransferResult>> BurnAsync(decimal amount, CancellationToken ct = default)
+    /// <summary>Burns tokens from the signer's own balance.</summary>
+    public async Task<TronResult<TransferResult>> BurnAsync(TronAccount signer, decimal amount, CancellationToken ct = default)
     {
+        if (signer is null)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Signer is required");
         if (amount <= 0)
             return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
@@ -235,7 +241,7 @@ public class Trc20Contract : IDisposable
             var rawAmount = ToRawAmount(amount, decimals);
             var data = TronAbiEncoder.EncodeBurn(rawAmount);
 
-            return await ExecuteWriteAsync("burn(uint256)", data, _ownerAccount.Address, amount, ct);
+            return await ExecuteWriteAsync(signer, "burn(uint256)", data, signer.Address, amount, ct);
         }
         catch (Exception ex)
         {
@@ -243,9 +249,11 @@ public class Trc20Contract : IDisposable
         }
     }
 
-    /// <summary>Burns tokens from the specified address (requires allowance).</summary>
-    public async Task<TronResult<TransferResult>> BurnFromAsync(string from, decimal amount, CancellationToken ct = default)
+    /// <summary>Burns tokens from the specified address (signer must have allowance from that address).</summary>
+    public async Task<TronResult<TransferResult>> BurnFromAsync(TronAccount signer, string from, decimal amount, CancellationToken ct = default)
     {
+        if (signer is null)
+            return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Signer is required");
         if (amount <= 0)
             return TronResult<TransferResult>.Fail(TronErrorCode.InvalidAmount, "Amount must be positive");
         try
@@ -255,7 +263,7 @@ public class Trc20Contract : IDisposable
             var rawAmount = ToRawAmount(amount, decimals);
             var data = TronAbiEncoder.EncodeBurnFrom(fromHex, rawAmount);
 
-            return await ExecuteWriteAsync("burnFrom(address,uint256)", data, from, amount, ct);
+            return await ExecuteWriteAsync(signer, "burnFrom(address,uint256)", data, from, amount, ct);
         }
         catch (Exception ex)
         {
@@ -265,24 +273,27 @@ public class Trc20Contract : IDisposable
 
     // === Internal helpers ===
 
+    /// <summary>
+    /// Constant call. Uses the contract's own address as owner_address since reads require no signing.
+    /// </summary>
     private async Task<byte[]> CallConstantAsync(string functionSelector, byte[] parameter, CancellationToken ct)
     {
         return await _provider.TriggerConstantContractAsync(
-            _ownerAccount.HexAddress, _contractHex, functionSelector, parameter, ct);
+            _contractHex, _contractHex, functionSelector, parameter, ct);
     }
 
     private async Task<TronResult<TransferResult>> ExecuteWriteAsync(
-        string functionSelector, byte[] fullData, string toAddress, decimal amount, CancellationToken ct)
+        TronAccount signer, string functionSelector, byte[] fullData, string toAddress, decimal amount, CancellationToken ct)
     {
         // Strip the 4-byte selector from fullData since the provider adds it via functionSelector
         var parameter = fullData.Length > 4 ? fullData[4..] : Array.Empty<byte>();
 
         var tx = await _provider.TriggerSmartContractAsync(
-            _ownerAccount.HexAddress, _contractHex,
+            signer.HexAddress, _contractHex,
             functionSelector, parameter,
             DefaultFeeLimit, 0, ct);
 
-        var signed = TransactionUtils.Sign(tx, _ownerAccount.PrivateKey);
+        var signed = TransactionUtils.Sign(tx, signer.PrivateKey);
         var txId = TransactionUtils.ComputeTxId(signed).ToHex();
 
         var broadcastResult = await _provider.BroadcastTransactionAsync(signed, ct);
@@ -296,7 +307,7 @@ public class Trc20Contract : IDisposable
         }
 
         return TronResult<TransferResult>.Ok(
-            new TransferResult(broadcastResult.TxId ?? txId, _ownerAccount.Address, toAddress, amount));
+            new TransferResult(broadcastResult.TxId ?? txId, signer.Address, toAddress, amount));
     }
 
     private async Task<byte> GetDecimalsInternalAsync(CancellationToken ct)
