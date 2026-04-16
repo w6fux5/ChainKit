@@ -1196,14 +1196,16 @@ public class TronClientTests
     // === IDisposable ===
 
     [Fact]
-    public void Dispose_DisposesDisposableProvider()
+    public void Dispose_DoesNotDisposeExternallyOwnedProvider()
     {
+        // Provider is externally owned; TronClient must not dispose it
+        // (matches EvmClient behavior; allows provider sharing across clients)
         var disposableProvider = Substitute.For<ITronProvider, IDisposable>();
         var client = new TronClient(disposableProvider);
 
         client.Dispose();
 
-        ((IDisposable)disposableProvider).Received(1).Dispose();
+        ((IDisposable)disposableProvider).DidNotReceive().Dispose();
     }
 
     [Fact]

@@ -704,12 +704,11 @@ public class TronClient : IDisposable
 
     // === IDisposable ===
 
-    public void Dispose()
-    {
-        if (Provider is IDisposable d)
-            d.Dispose();
-        GC.SuppressFinalize(this);
-    }
+    /// <summary>
+    /// Disposes the client. The provider is externally owned and is NOT disposed
+    /// (matches EvmClient behavior; allows provider sharing across multiple clients).
+    /// </summary>
+    public void Dispose() { /* Provider is externally owned */ }
 
     // === Helpers ===
 
