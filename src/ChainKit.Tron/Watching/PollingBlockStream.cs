@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ChainKit.Tron.Watching;
 
-public class PollingBlockStream : ITronBlockStream
+public sealed class PollingBlockStream : ITronBlockStream
 {
     private readonly ITronProvider _provider;
     private readonly int _intervalMs;
