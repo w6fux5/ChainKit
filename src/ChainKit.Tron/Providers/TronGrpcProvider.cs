@@ -387,13 +387,22 @@ public class TronGrpcProvider : ITronProvider, IDisposable
 
     // --- Channel & call helpers ---
 
+    // Cap per-message size to bound memory pressure from large or malicious responses.
+    // Tron full-blocks can exceed the gRPC default (4 MB); 32 MB accommodates realistic
+    // blocks while preventing unbounded allocations.
+    private const int MaxMessageSizeBytes = 32 * 1024 * 1024;
+
     private static GrpcChannel CreateChannel(string endpoint)
     {
         // Ensure the endpoint has a scheme; default to https for gRPC
         if (!endpoint.StartsWith("http://") && !endpoint.StartsWith("https://"))
             endpoint = "https://" + endpoint;
 
-        return GrpcChannel.ForAddress(endpoint);
+        return GrpcChannel.ForAddress(endpoint, new GrpcChannelOptions
+        {
+            MaxReceiveMessageSize = MaxMessageSizeBytes,
+            MaxSendMessageSize = MaxMessageSizeBytes,
+        });
     }
 
     private Task<byte[]> CallFullNodeAsync(Method<byte[], byte[]> method, byte[] request, CancellationToken ct)

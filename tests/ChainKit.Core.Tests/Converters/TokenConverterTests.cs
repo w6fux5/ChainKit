@@ -43,6 +43,22 @@ public class TokenConverterTests
     }
 
     [Fact]
+    public void ToRawAmount_ExcessPrecision_TruncatesToTokenDecimals()
+    {
+        // Input has 9 decimal places, token supports only 6.
+        // Expected: digits beyond decimals are truncated during ToRawAmount,
+        // and the roundtrip loses the excess (this is correct chain behavior — chains
+        // only store integer "raw" units; sub-unit precision cannot exist on-chain).
+        var original = 1.123456789m;
+        var raw = TokenConverter.ToRawAmount(original, 6);
+        Assert.Equal(new BigInteger(1_123_456), raw); // .789 truncated
+
+        var back = TokenConverter.ToTokenAmount(raw, 6);
+        Assert.Equal(1.123456m, back);
+        Assert.NotEqual(original, back); // documents the lossy nature explicitly
+    }
+
+    [Fact]
     public void ToTokenAmount_ZeroDecimals_ReturnsSameValue()
     {
         Assert.Equal(100m, TokenConverter.ToTokenAmount(new BigInteger(100), 0));
