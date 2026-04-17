@@ -547,6 +547,30 @@ else
 
 > **注意：** `decimals` 是必填參數，SDK 不會自動查詢。consumer 應透過 `Trc20Contract.DecimalsAsync()` 或 `GetBalanceAsync` 回傳的 `Trc20BalanceInfo.Decimals` 取得。
 
+### 鏈式交易：等待上鏈再下一步
+
+Broadcast 成功只代表 tx 進 mempool，還沒上鏈時餘額尚未更新。要立刻從收款地址再轉出，必須等 tx 進塊：
+
+```csharp
+var sendAToB = await tronClient.TransferTrxAsync(accountA, walletB, 10m);
+if (!sendAToB.Success) { /* handle */ return; }
+
+// 預設 timeout=15s, pollInterval=1s, maxConsecutiveFailures=5
+var onChain = await tronClient.WaitForOnChainAsync(sendAToB.Data!.TxId);
+if (!onChain.Success)
+{
+    // ProviderTimeout / ProviderConnectionFailed / InvalidArgument
+    return;
+}
+
+Console.WriteLine($"Block: {onChain.Data!.BlockNumber}, Result: {onChain.Data.ContractResult}");
+
+// 現在 B 的餘額已更新，可以安全轉出
+await tronClient.TransferTrxAsync(accountB, externalWallet, 5m);
+```
+
+如果你已經訂閱了 `TronTransactionWatcher` 並在事件流中處理收款，仍可用此方法做兜底（例如下游服務沒掛 watcher）。
+
 ---
 
 ## TRC20 代幣操作

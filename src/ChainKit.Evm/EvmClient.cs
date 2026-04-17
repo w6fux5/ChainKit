@@ -273,8 +273,8 @@ public sealed class EvmClient : IDisposable
             var txData = await Provider.GetTransactionByHashAsync(txHash, ct);
             if (txData is null)
                 return EvmResult<EvmTransactionDetail>.Fail(
-                    EvmErrorCode.TransactionNotFound,
-                    $"Receipt found but eth_getTransactionByHash returned null for {txHash}");
+                    EvmErrorCode.ProviderRpcError,
+                    $"Receipt exists for {txHash} but eth_getTransactionByHash returned null (likely provider inconsistency or reorg between calls)");
 
             var detail = BuildTransactionDetail(txHash, txData.Value, receiptResult.Data);
             return EvmResult<EvmTransactionDetail>.Ok(detail);

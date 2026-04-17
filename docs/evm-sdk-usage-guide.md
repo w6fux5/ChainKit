@@ -148,6 +148,35 @@ else
 
 **流程：** 驗證金額 → 轉換 ETH→Wei → 取 nonce → 估算 gas → 取 EIP-1559 費用 → 簽名 → 廣播
 
+### 鏈式交易：等待上鏈再下一步
+
+Broadcast 成功只代表 tx 進節點 mempool，還沒上鏈時鏈上狀態（送款方 / 收款方餘額）尚未改變。要立刻從收款地址再轉出，必須等 tx 進塊：
+
+```csharp
+var sendAToB = await evmClient.TransferAsync(accountA, walletB, 0.1m);
+if (!sendAToB.Success) { /* handle */ return; }
+
+// 預設 timeout=60s, pollInterval=2s, maxConsecutiveFailures=5
+var onChain = await evmClient.WaitForOnChainAsync(sendAToB.Data!.TxId);
+if (!onChain.Success)
+{
+    // ProviderTimeout / ProviderConnectionFailed / InvalidArgument
+    return;
+}
+
+Console.WriteLine($"Block: {onChain.Data!.BlockNumber}, Status: {onChain.Data.Status}");
+if (onChain.Data.Status == TransactionStatus.Failed)
+{
+    // 交易已進塊但 revert — 呼叫端自行決定後續處理
+    return;
+}
+
+// 現在 B 的餘額已更新，可以安全轉出
+await evmClient.TransferAsync(accountB, externalWallet, 0.05m);
+```
+
+若只需要確認「是否進塊」而不需要完整詳情，可改用 `WaitForReceiptAsync` — 回傳原始 receipt JSON，可省下一次 `eth_getTransactionByHash` 呼叫。
+
 ### GetBalanceAsync — 查餘額
 
 ```csharp
