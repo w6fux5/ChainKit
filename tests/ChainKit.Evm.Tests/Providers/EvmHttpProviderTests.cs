@@ -9,7 +9,7 @@ public class EvmHttpProviderTests
 {
     private const string FakeRpcUrl = "http://localhost:8545";
 
-    private static MockHandler SetupRpcResponse(string method, string resultJson)
+    private static MockHandler SetupRpcResponse(string resultJson)
     {
         // Wrap the result in a full JSON-RPC 2.0 response envelope
         var body = $$"""{"jsonrpc":"2.0","id":1,"result":{{resultJson}}}""";
@@ -28,7 +28,7 @@ public class EvmHttpProviderTests
     public async Task GetChainIdAsync_ReturnsDecodedChainId()
     {
         // eth_chainId returns a 0x-prefixed hex string; 0x1 = 1 (Ethereum mainnet)
-        var handler = SetupRpcResponse("eth_chainId", "\"0x1\"");
+        var handler = SetupRpcResponse("\"0x1\"");
 
         using var provider = CreateProvider(handler);
         var chainId = await provider.GetChainIdAsync();
@@ -40,7 +40,7 @@ public class EvmHttpProviderTests
     public async Task GetChainIdAsync_LargeChainId_DecodesCorrectly()
     {
         // 0x89 = 137 (Polygon mainnet)
-        var handler = SetupRpcResponse("eth_chainId", "\"0x89\"");
+        var handler = SetupRpcResponse("\"0x89\"");
 
         using var provider = CreateProvider(handler);
         var chainId = await provider.GetChainIdAsync();
