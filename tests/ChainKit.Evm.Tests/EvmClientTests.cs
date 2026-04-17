@@ -356,4 +356,117 @@ public class EvmClientTests
         _client.Dispose();
         _provider.DidNotReceive().Dispose();
     }
+
+    // === WaitForReceiptAsync ===
+
+    private static JsonElement BuildReceipt(string status = "0x1", string blockNumber = "0x10")
+    {
+        var json = $"{{\"status\":\"{status}\",\"blockNumber\":\"{blockNumber}\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\"}}";
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_ReceiptAppearsAfterTwoPolls_ReturnsOk()
+    {
+        var calls = 0;
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                return Task.FromResult<JsonElement?>(calls < 3 ? null : BuildReceipt());
+            });
+
+        var result = await _client.WaitForReceiptAsync("0xabc",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.True(result.Success);
+        Assert.Equal("0x1", result.Data.GetProperty("status").GetString());
+        Assert.Equal(3, calls);
+        await _provider.DidNotReceive().GetTransactionByHashAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_NeverMined_TimesOut()
+    {
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((JsonElement?)null);
+
+        var result = await _client.WaitForReceiptAsync("0xT",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.ProviderTimeout, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_ConsecutiveFailures_ReturnsProviderConnectionFailed()
+    {
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("network down"));
+
+        var result = await _client.WaitForReceiptAsync("0xF",
+            timeout: TimeSpan.FromSeconds(10),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 3);
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.ProviderConnectionFailed, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_Cancelled_ThrowsOperationCanceled()
+    {
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((JsonElement?)null);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _client.WaitForReceiptAsync("0xC",
+                timeout: TimeSpan.FromSeconds(5),
+                pollInterval: TimeSpan.FromMilliseconds(5),
+                ct: cts.Token));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task WaitForReceiptAsync_BadTxHash_ReturnsInvalidArgument(string? txHash)
+    {
+        var result = await _client.WaitForReceiptAsync(txHash!);
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
+        await _provider.DidNotReceive().GetTransactionReceiptAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_ZeroPollInterval_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForReceiptAsync("0xZP", pollInterval: TimeSpan.Zero);
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_NegativeTimeout_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForReceiptAsync("0xNT", timeout: TimeSpan.FromSeconds(-1));
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_NegativeMaxFailures_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForReceiptAsync("0xNF", maxConsecutiveFailures: -1);
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
+    }
 }
