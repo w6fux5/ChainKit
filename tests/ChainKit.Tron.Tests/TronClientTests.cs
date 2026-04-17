@@ -1342,4 +1342,198 @@ public class TronClientTests
         Buffer.BlockCopy(strBytes, 0, result, 64, strBytes.Length);
         return result;
     }
+
+    // === WaitForOnChainAsync ===
+
+    private static TransactionInfoDto EmptyTxInfo(string txId) =>
+        new(TxId: txId, BlockNumber: 0, BlockTimestamp: 0, ContractResult: "",
+            Fee: 0, EnergyUsage: 0, NetUsage: 0);
+
+    private static TransactionInfoDto OnChainTxInfo(string txId, long blockNumber = 12345) =>
+        new(TxId: txId, BlockNumber: blockNumber, BlockTimestamp: 1700000000000,
+            ContractResult: "SUCCESS", Fee: 1000, EnergyUsage: 0, NetUsage: 268);
+
+    [Fact]
+    public async Task WaitForOnChainAsync_TxAppearsAfterTwoPolls_ReturnsOk()
+    {
+        var calls = 0;
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                return Task.FromResult(calls < 3 ? EmptyTxInfo("txA") : OnChainTxInfo("txA"));
+            });
+
+        var result = await _client.WaitForOnChainAsync("txA",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data);
+        Assert.Equal(12345L, result.Data!.BlockNumber);
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_NeverOnChain_TimesOut()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(EmptyTxInfo("txT"));
+
+        var result = await _client.WaitForOnChainAsync("txT",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderTimeout.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_ConsecutiveFailures_ReturnsProviderConnectionFailed()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("network down"));
+
+        var result = await _client.WaitForOnChainAsync("txF",
+            timeout: TimeSpan.FromSeconds(10),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 3);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderConnectionFailed.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_FailureThenSuccess_ResetsCounter()
+    {
+        var calls = 0;
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                if (calls <= 2) throw new HttpRequestException("flaky");
+                if (calls == 3) return Task.FromResult(EmptyTxInfo("txR"));
+                return Task.FromResult(OnChainTxInfo("txR"));
+            });
+
+        var result = await _client.WaitForOnChainAsync("txR",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 3);
+
+        // 2 throws then success — counter resets, never hits the threshold.
+        Assert.True(result.Success);
+        Assert.Equal(4, calls);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_MaxFailuresZero_RetriesUntilTimeout()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("always down"));
+
+        var result = await _client.WaitForOnChainAsync("txU",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 0);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderTimeout.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_Cancelled_ThrowsOperationCanceled()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(EmptyTxInfo("txC"));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _client.WaitForOnChainAsync("txC",
+                timeout: TimeSpan.FromSeconds(5),
+                pollInterval: TimeSpan.FromMilliseconds(5),
+                ct: cts.Token));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task WaitForOnChainAsync_BadTxId_ReturnsInvalidArgument(string? txId)
+    {
+        var result = await _client.WaitForOnChainAsync(txId!);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+        await _provider.DidNotReceive().GetTransactionInfoByIdAsync(
+            Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_ZeroPollInterval_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("txZ",
+            pollInterval: TimeSpan.Zero);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_NegativeTimeout_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("txN",
+            timeout: TimeSpan.FromSeconds(-1));
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_NegativeMaxFailures_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("txM",
+            maxConsecutiveFailures: -1);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_TimeoutZero_PollsOnceThenTimesOut()
+    {
+        var calls = 0;
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => { calls++; return Task.FromResult(EmptyTxInfo("txZ0")); });
+
+        var result = await _client.WaitForOnChainAsync("txZ0",
+            timeout: TimeSpan.Zero,
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderTimeout.ToString(), result.Error!.Code);
+        Assert.Equal(1, calls);
+    }
 }
