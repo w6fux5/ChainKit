@@ -221,4 +221,10 @@ public class TronNodeHealthWatcherTests
 
         Assert.Equal(TimeSpan.Zero, report.BlockAge);
     }
+
+    [Fact]
+    public void Constructor_NullProvider_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => new TronNodeHealthWatcher(null!));
+    }
 }

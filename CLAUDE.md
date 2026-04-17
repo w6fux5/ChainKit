@@ -75,7 +75,7 @@
 - 金額計算用 `TokenConverter.DecimalPow10`（decimal 迴圈乘法），禁用 `Math.Pow`（double 精度損失）
 - `JsonDocument.Parse` 必須用 `using` dispose（歸還 ArrayPool 記憶體）
 - IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）
-- IAsyncDisposable：TronTransactionWatcher
+- IAsyncDisposable：TronTransactionWatcher、EvmTransactionWatcher、TronNodeHealthWatcher、EvmNodeHealthWatcher
 - Thread safe：TokenInfoCache（ConcurrentDictionary）、Trc20Contract（SemaphoreSlim）、Watcher（lock）
 - Watcher 六事件：OnTrx/Trc20 Received/Sent（Unconfirmed）+ OnTransactionConfirmed/Failed（Solidity Node 確認）
 - Watcher 事件的地址欄位統一回傳 Base58 格式（T 開頭），provider 層保持 hex（見 ADR 007）
@@ -91,7 +91,6 @@
 - ERC20 Transfer 偵測用 receipt logs（topic `0xddf252ad...`），不用 input data
 - ERC20 所有操作統一走 `Erc20Contract`，`EvmClient` 不包 ERC20 transfer
 - IDisposable：EvmClient、EvmHttpProvider、Erc20Contract、EvmAccount（清零私鑰）
-- IAsyncDisposable：EvmTransactionWatcher
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
 
 ## Tron 開發注意事項
@@ -132,6 +131,7 @@
 - `ChainKit.Evm` 單一專案支援所有 EVM 鏈，用 `EvmNetworkConfig` 的 ChainId 區分
 - EVM 交易確認：receipt status + block confirmations（預設 12）
 - CI/CD：GitHub Actions 在 push `v*` tag 時自動 build → test → pack → push NuGet（見 ADR 015）
+- 節點健康檢查：`TronNodeHealthWatcher` / `EvmNodeHealthWatcher` 以 event-based poll 模式回報 raw metrics（Reachable/Latency/BlockNumber/BlockAge，EVM 另含 ChainIdMatch），由呼叫端自行定義健康 threshold
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`、`docs/decisions/014-evm-sdk-architecture.md`
 
 ## 文件
