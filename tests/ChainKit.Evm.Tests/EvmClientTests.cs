@@ -598,4 +598,22 @@ public class EvmClientTests
         Assert.False(result.Success);
         Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
     }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_ReceiptButTxDataNull_ReturnsProviderRpcError()
+    {
+        // Simulates provider-side inconsistency: receipt exists (tx mined)
+        // but eth_getTransactionByHash returns null for the same hash.
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(BuildReceipt());
+        _provider.GetTransactionByHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((JsonElement?)null);
+
+        var result = await _client.WaitForOnChainAsync("0xGhost",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.ProviderRpcError, result.ErrorCode);
+    }
 }
