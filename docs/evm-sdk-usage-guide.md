@@ -160,7 +160,7 @@ if (!sendAToB.Success) { /* handle */ return; }
 var onChain = await evmClient.WaitForOnChainAsync(sendAToB.Data!.TxId);
 if (!onChain.Success)
 {
-    // ProviderTimeout / ProviderConnectionFailed / InvalidArgument
+    // ProviderTimeout / ProviderConnectionFailed / ProviderRpcError / InvalidArgument
     return;
 }
 
