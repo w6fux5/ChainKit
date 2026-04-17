@@ -239,6 +239,57 @@ public sealed class EvmClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Polls until the transaction is mined and returns the merged tx + receipt detail.
+    /// Use after broadcast when a follow-up tx depends on this tx's effects.
+    /// One additional eth_getTransactionByHash call is made when the receipt appears,
+    /// to populate sender/recipient/value/nonce. Use WaitForReceiptAsync if you don't need them.
+    /// </summary>
+    /// <param name="txHash">The transaction hash returned by the broadcast call.</param>
+    /// <param name="timeout">Total time to wait. Defaults to 60 seconds.</param>
+    /// <param name="pollInterval">Interval between polls. Defaults to 2 seconds.</param>
+    /// <param name="maxConsecutiveFailures">
+    /// Number of consecutive provider exceptions before giving up. Set to 0 to retry indefinitely
+    /// until timeout. Defaults to 5.
+    /// </param>
+    /// <param name="ct">Cancellation token. Cancellation throws OperationCanceledException.</param>
+    public async Task<EvmResult<EvmTransactionDetail>> WaitForOnChainAsync(
+        string txHash,
+        TimeSpan? timeout = null,
+        TimeSpan? pollInterval = null,
+        int maxConsecutiveFailures = 5,
+        CancellationToken ct = default)
+    {
+        var receiptResult = await WaitForReceiptAsync(txHash, timeout, pollInterval, maxConsecutiveFailures, ct);
+        if (!receiptResult.Success)
+        {
+            var code = receiptResult.ErrorCode ?? EvmErrorCode.Unknown;
+            var message = receiptResult.Error?.Message ?? "Wait for receipt failed";
+            return EvmResult<EvmTransactionDetail>.Fail(code, message);
+        }
+
+        try
+        {
+            var txData = await Provider.GetTransactionByHashAsync(txHash, ct);
+            if (txData is null)
+                return EvmResult<EvmTransactionDetail>.Fail(
+                    EvmErrorCode.TransactionNotFound,
+                    $"Receipt found but eth_getTransactionByHash returned null for {txHash}");
+
+            var detail = BuildTransactionDetail(txHash, txData.Value, receiptResult.Data);
+            return EvmResult<EvmTransactionDetail>.Ok(detail);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WaitForOnChainAsync: post-receipt tx fetch failed for {TxHash}", txHash);
+            return EvmResult<EvmTransactionDetail>.Fail(EvmErrorCode.ProviderConnectionFailed, ex.Message);
+        }
+    }
+
     private EvmTransactionDetail BuildTransactionDetail(string txHash, JsonElement txData, JsonElement? receipt)
     {
         // Parse fields from txData

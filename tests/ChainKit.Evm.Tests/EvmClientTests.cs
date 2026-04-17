@@ -469,4 +469,133 @@ public class EvmClientTests
         Assert.False(result.Success);
         Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
     }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_FailureThenSuccess_ResetsCounter()
+    {
+        var calls = 0;
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                if (calls <= 2) throw new HttpRequestException("flaky");
+                if (calls == 3) return Task.FromResult<JsonElement?>(null);
+                return Task.FromResult<JsonElement?>(BuildReceipt());
+            });
+
+        var result = await _client.WaitForReceiptAsync("0xR",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 3);
+
+        // 2 throws then success — counter resets, never hits the threshold.
+        Assert.True(result.Success);
+        Assert.Equal(4, calls);
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_MaxFailuresZero_RetriesUntilTimeout()
+    {
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("always down"));
+
+        var result = await _client.WaitForReceiptAsync("0xU",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 0);
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.ProviderTimeout, result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task WaitForReceiptAsync_TimeoutZero_PollsOnceThenTimesOut()
+    {
+        var calls = 0;
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => { calls++; return Task.FromResult<JsonElement?>(null); });
+
+        var result = await _client.WaitForReceiptAsync("0xZ0",
+            timeout: TimeSpan.Zero,
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.ProviderTimeout, result.ErrorCode);
+        Assert.Equal(1, calls);
+    }
+
+    // === WaitForOnChainAsync (EVM) ===
+
+    private static JsonElement BuildTxData(string from, string to, string valueHex = "0x16345785D8A0000")
+    {
+        // 0x16345785D8A0000 = 0.1 ETH in Wei
+        var json = $"{{\"from\":\"{from}\",\"to\":\"{to}\",\"value\":\"{valueHex}\",\"nonce\":\"0x5\"}}";
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_ReceiptAppears_ReturnsDetail()
+    {
+        var calls = 0;
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                return Task.FromResult<JsonElement?>(calls < 2 ? null : BuildReceipt());
+            });
+        _provider.GetTransactionByHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(BuildTxData(TestAddress, "0x000000000000000000000000000000000000dead"));
+
+        var result = await _client.WaitForOnChainAsync("0xabc",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data);
+        Assert.Equal(TransactionStatus.Confirmed, result.Data!.Status);
+        Assert.Equal(16L, result.Data.BlockNumber); // 0x10
+        await _provider.Received(1).GetTransactionByHashAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_RevertedTx_ReturnsOkWithFailedStatus()
+    {
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(BuildReceipt(status: "0x0"));
+        _provider.GetTransactionByHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(BuildTxData(TestAddress, "0x000000000000000000000000000000000000dead"));
+
+        var result = await _client.WaitForOnChainAsync("0xR",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.True(result.Success);
+        Assert.Equal(TransactionStatus.Failed, result.Data!.Status);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_TimeoutBubblesUp()
+    {
+        _provider.GetTransactionReceiptAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((JsonElement?)null);
+
+        var result = await _client.WaitForOnChainAsync("0xT",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.ProviderTimeout, result.ErrorCode);
+        await _provider.DidNotReceive().GetTransactionByHashAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_BadTxHash_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("");
+        Assert.False(result.Success);
+        Assert.Equal(EvmErrorCode.InvalidArgument, result.ErrorCode);
+    }
 }
