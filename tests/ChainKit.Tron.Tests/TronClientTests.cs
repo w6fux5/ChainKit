@@ -327,7 +327,7 @@ public class TronClientTests
         _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 0, 0, 0));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 1000, 200, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -350,7 +350,7 @@ public class TronClientTests
                 OwnerAddress: "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
 
         // energy_fee = 27_255_900 sun, net_fee = 348_000 sun
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS",
                 Fee: 27_603_900, EnergyUsage: 64_895, NetUsage: 345,
                 EnergyFee: 27_255_900, NetFee: 348_000));
@@ -374,7 +374,7 @@ public class TronClientTests
         _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Solidity node unavailable"));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -393,7 +393,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0));
 
         // 模擬 Solidity Node 回傳空物件：TxId 為空，代表交易尚未 solidified
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -411,7 +411,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TriggerSmartContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 100000, 0,
                 ReceiptResult: "REVERT"));
 
@@ -430,7 +430,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TriggerSmartContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 100000, 0,
                 ReceiptResult: "OUT_OF_ENERGY"));
 
@@ -449,7 +449,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TriggerSmartContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 50000, 0,
                 ReceiptResult: "SUCCESS"));
 
@@ -469,7 +469,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TransferContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 267));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -505,7 +505,7 @@ public class TronClientTests
                 ToAddress: toHex,
                 AmountSun: 5_000_000)); // 5 TRX
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 1000, 0, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -544,7 +544,7 @@ public class TronClientTests
                 ContractAddress: contractHex,
                 ContractData: data));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
 
         // Mock symbol() and decimals() contract calls for the unknown contract
@@ -598,7 +598,7 @@ public class TronClientTests
                 ContractAddress: contractHex,
                 ContractData: data));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -635,7 +635,7 @@ public class TronClientTests
                 ContractAddress: contractHex,
                 ContractData: data));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 300, 1700000000000, "SUCCESS", 500, 5000, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -657,7 +657,7 @@ public class TronClientTests
                 OwnerAddress: ownerHex,
                 AmountSun: 100_000_000)); // 100 TRX
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 400, 1700000000000, "SUCCESS", 0, 0, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -679,7 +679,7 @@ public class TronClientTests
                 ContractType: "CreateSmartContract",
                 OwnerAddress: ownerHex));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 500, 1700000000000, "SUCCESS", 10000, 50000, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -703,7 +703,7 @@ public class TronClientTests
                 ToAddress: receiverHex,
                 AmountSun: 50_000_000)); // 50 TRX
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 600, 1700000000000, "SUCCESS", 0, 0, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -725,7 +725,7 @@ public class TronClientTests
                 ContractType: "ProposalCreateContract",
                 OwnerAddress: "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 700, 1700000000000, "SUCCESS", 0, 0, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);

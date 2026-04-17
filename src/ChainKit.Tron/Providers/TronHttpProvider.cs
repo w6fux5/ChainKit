@@ -173,9 +173,11 @@ public class TronHttpProvider : ITronProvider, IDisposable
         return ParseTransactionInfoFromTx(json, txId);
     }
 
-    public async Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default)
+    public async Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, bool useSolidity = true, CancellationToken ct = default)
     {
-        var json = await PostSolidityAsync("/walletsolidity/gettransactioninfobyid", new { value = txId }, ct);
+        var json = useSolidity
+            ? await PostSolidityAsync("/walletsolidity/gettransactioninfobyid", new { value = txId }, ct)
+            : await PostAsync("/wallet/gettransactioninfobyid", new { value = txId }, ct);
         return ParseTransactionInfo(json, txId);
     }
 

@@ -103,7 +103,7 @@ public class TronClient : IDisposable
             TransactionInfoDto? solidityInfo = null;
             try
             {
-                solidityInfo = await Provider.GetTransactionInfoByIdAsync(txId, ct);
+                solidityInfo = await Provider.GetTransactionInfoByIdAsync(txId, ct: ct);
             }
             catch (Exception ex)
             {

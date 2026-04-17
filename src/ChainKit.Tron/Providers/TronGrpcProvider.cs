@@ -270,13 +270,15 @@ public class TronGrpcProvider : ITronProvider, IDisposable
             contractType, ownerAddress, toAddress, amountSun, contractAddress, contractData);
     }
 
-    public async Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default)
+    public async Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, bool useSolidity = true, CancellationToken ct = default)
     {
         // BytesMessage: field 1 (bytes) = value (the tx hash)
         var txHash = Convert.FromHexString(txId);
         var request = EncodeField(1, txHash);
 
-        var invoker = _solidityInvoker ?? _fullNodeInvoker;
+        var invoker = useSolidity
+            ? (_solidityInvoker ?? _fullNodeInvoker)
+            : _fullNodeInvoker;
         var response = await CallAsync(invoker, GetTransactionInfoByIdMethod, request, ct);
 
         // Parse TransactionInfo response
