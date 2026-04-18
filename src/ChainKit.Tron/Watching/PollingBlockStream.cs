@@ -9,13 +9,27 @@ public sealed class PollingBlockStream : ITronBlockStream
 {
     private readonly ITronProvider _provider;
     private readonly int _intervalMs;
+    private readonly int _maxBlocksPerPoll;
     private readonly ILogger _logger;
 
+    /// <summary>
+    /// Creates a new PollingBlockStream instance.
+    /// </summary>
+    /// <param name="provider">The Tron provider used for block fetches.</param>
+    /// <param name="intervalMs">Interval between polls in milliseconds. Defaults to 3000 (matches Tron block time).</param>
+    /// <param name="maxBlocksPerPoll">Upper bound on blocks yielded per poll cycle. When the chain has advanced by more
+    /// than this, the remaining blocks are caught up on subsequent polls. Protects against unbounded serial fetches
+    /// (and unresponsive cancellation) after long disconnects / restarts when head may have jumped thousands of blocks.</param>
+    /// <param name="logger">Optional logger.</param>
     public PollingBlockStream(ITronProvider provider, int intervalMs = 3000,
+        int maxBlocksPerPoll = 100,
         ILogger<PollingBlockStream>? logger = null)
     {
+        if (maxBlocksPerPoll <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxBlocksPerPoll), "Must be positive.");
         _provider = provider;
         _intervalMs = intervalMs;
+        _maxBlocksPerPoll = maxBlocksPerPoll;
         _logger = logger ?? NullLogger<PollingBlockStream>.Instance;
     }
 
@@ -26,37 +40,74 @@ public sealed class PollingBlockStream : ITronBlockStream
 
         while (!ct.IsCancellationRequested)
         {
-            TronBlock? block = null;
+            // Phase 1: fetch current head to learn the target we need to catch up to.
+            BlockInfo? headBlock = null;
             try
             {
-                var blockInfo = await _provider.GetNowBlockAsync(ct);
-                if (blockInfo.BlockNumber > lastBlockNumber)
-                {
-                    // If GetNowBlockAsync didn't include transactions,
-                    // fetch the full block by number to get them.
-                    if (blockInfo.Transactions == null || blockInfo.Transactions.Count == 0)
-                    {
-                        if (blockInfo.TransactionCount > 0)
-                        {
-                            var fullBlock = await _provider.GetBlockByNumAsync(blockInfo.BlockNumber, ct);
-                            blockInfo = fullBlock;
-                        }
-                    }
-
-                    lastBlockNumber = blockInfo.BlockNumber;
-                    var transactions = ConvertTransactions(blockInfo.Transactions);
-                    block = new TronBlock(
-                        blockInfo.BlockNumber,
-                        blockInfo.BlockId,
-                        DateTimeOffset.FromUnixTimeMilliseconds(blockInfo.Timestamp),
-                        transactions);
-                }
+                headBlock = await _provider.GetNowBlockAsync(ct);
             }
             catch (OperationCanceledException) { yield break; }
             catch (Exception ex) { _logger.LogDebug(ex, "Block polling failed, retrying next interval"); }
 
-            if (block != null)
-                yield return block;
+            if (headBlock != null)
+            {
+                var currentHead = headBlock.BlockNumber;
+
+                // On first successful poll, seed at (head - 1) so we don't backfill
+                // the entire chain — we only want blocks produced from now forward.
+                if (lastBlockNumber < 0)
+                    lastBlockNumber = currentHead - 1;
+
+                // Phase 2: yield every block in (lastBlockNumber, batchEnd], where batchEnd
+                // caps the number of blocks yielded per poll. Tron block time ~= poll interval,
+                // so head can advance by more than 1 between polls; without this loop,
+                // intermediate blocks are silently dropped. The cap protects against
+                // unbounded serial fetches after long disconnects / restarts.
+                var gap = currentHead - lastBlockNumber;
+                var batchEnd = gap > _maxBlocksPerPoll
+                    ? lastBlockNumber + _maxBlocksPerPoll
+                    : currentHead;
+                if (gap > _maxBlocksPerPoll)
+                {
+                    _logger.LogWarning(
+                        "Block stream is {Gap} blocks behind head {Head}; catching up {Cap} per poll",
+                        gap, currentHead, _maxBlocksPerPoll);
+                }
+
+                while (lastBlockNumber < batchEnd && !ct.IsCancellationRequested)
+                {
+                    var num = lastBlockNumber + 1;
+                    TronBlock? block = null;
+                    try
+                    {
+                        var bi = num == currentHead
+                            ? headBlock
+                            : await _provider.GetBlockByNumAsync(num, ct);
+
+                        // /wallet/getnowblock and /wallet/getblockbynum can omit the tx
+                        // list even when txs exist; refetch explicitly in that case.
+                        if ((bi.Transactions == null || bi.Transactions.Count == 0) && bi.TransactionCount > 0)
+                            bi = await _provider.GetBlockByNumAsync(num, ct);
+
+                        block = new TronBlock(
+                            bi.BlockNumber,
+                            bi.BlockId,
+                            DateTimeOffset.FromUnixTimeMilliseconds(bi.Timestamp),
+                            ConvertTransactions(bi.Transactions));
+                    }
+                    catch (OperationCanceledException) { yield break; }
+                    catch (Exception ex)
+                    {
+                        // Don't advance lastBlockNumber — retry this block next interval.
+                        _logger.LogDebug(ex, "Failed to fetch block {BlockNumber}, will retry", num);
+                    }
+
+                    if (block == null) break;
+
+                    yield return block;
+                    lastBlockNumber = num;
+                }
+            }
 
             try { await Task.Delay(_intervalMs, ct); }
             catch (OperationCanceledException) { yield break; }
