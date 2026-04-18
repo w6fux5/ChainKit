@@ -61,8 +61,15 @@ public sealed class TronAccount : IAccount, IDisposable
     {
         var m = new NBitcoin.Mnemonic(mnemonic);
         var seed = m.DeriveSeed();
-        var masterKey = ExtKey.CreateFromSeed(seed);
-        var derived = masterKey.Derive(new KeyPath($"m/44'/195'/0'/0/{index}"));
-        return FromPrivateKey(derived.PrivateKey.ToBytes());
+        try
+        {
+            var masterKey = ExtKey.CreateFromSeed(seed);
+            var derived = masterKey.Derive(new KeyPath($"m/44'/195'/0'/0/{index}"));
+            return FromPrivateKey(derived.PrivateKey.ToBytes());
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
     }
 }

@@ -152,6 +152,173 @@ public class PollingBlockStreamTests
     }
 
     [Fact]
+    public async Task StreamBlocksAsync_BackfillsSkippedBlocksWhenHeadJumps()
+    {
+        // Head advances from 100 -> 103 between polls. The intermediate blocks
+        // 101 and 102 must not be dropped — they are fetched via GetBlockByNumAsync.
+        var provider = Substitute.For<ITronProvider>();
+        var nowBlockCall = 0;
+        provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                nowBlockCall++;
+                return nowBlockCall == 1
+                    ? new BlockInfo(100, "b100", 0, 0, Array.Empty<byte>())
+                    : new BlockInfo(103, "b103", 0, 0, Array.Empty<byte>());
+            });
+        provider.GetBlockByNumAsync(101, Arg.Any<CancellationToken>())
+            .Returns(new BlockInfo(101, "b101", 0, 0, Array.Empty<byte>()));
+        provider.GetBlockByNumAsync(102, Arg.Any<CancellationToken>())
+            .Returns(new BlockInfo(102, "b102", 0, 0, Array.Empty<byte>()));
+
+        var stream = new PollingBlockStream(provider, intervalMs: 50);
+        var cts = new CancellationTokenSource(500);
+        var blocks = new List<TronBlock>();
+
+        await foreach (var block in stream.StreamBlocksAsync(cts.Token))
+        {
+            blocks.Add(block);
+            if (blocks.Count >= 4) break;
+        }
+
+        Assert.Equal(4, blocks.Count);
+        Assert.Equal(100, blocks[0].BlockNumber);
+        Assert.Equal(101, blocks[1].BlockNumber);
+        Assert.Equal(102, blocks[2].BlockNumber);
+        Assert.Equal(103, blocks[3].BlockNumber);
+    }
+
+    [Fact]
+    public async Task StreamBlocksAsync_BackfillPreservesTransactionsForMiddleBlocks()
+    {
+        // Head jumps 200 -> 202; middle block 201 carries the txs we must not lose.
+        var provider = Substitute.For<ITronProvider>();
+        var nowBlockCall = 0;
+        provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                nowBlockCall++;
+                return nowBlockCall == 1
+                    ? new BlockInfo(200, "b200", 0, 0, Array.Empty<byte>())
+                    : new BlockInfo(202, "b202", 0, 0, Array.Empty<byte>());
+            });
+        var middleTxs = new List<BlockTransactionInfo>
+        {
+            new("tx-in-201", "TransferContract", "41aaaa", "41bbbb", 7_000_000, null, null),
+        };
+        provider.GetBlockByNumAsync(201, Arg.Any<CancellationToken>())
+            .Returns(new BlockInfo(201, "b201", 0, 1, Array.Empty<byte>(), middleTxs));
+
+        var stream = new PollingBlockStream(provider, intervalMs: 50);
+        var cts = new CancellationTokenSource(500);
+        var blocks = new List<TronBlock>();
+
+        await foreach (var block in stream.StreamBlocksAsync(cts.Token))
+        {
+            blocks.Add(block);
+            if (blocks.Count >= 3) break;
+        }
+
+        Assert.Equal(3, blocks.Count);
+        var block201 = blocks.Single(b => b.BlockNumber == 201);
+        Assert.Single(block201.Transactions);
+        Assert.Equal("tx-in-201", block201.Transactions[0].TxId);
+    }
+
+    [Fact]
+    public async Task StreamBlocksAsync_MidBackfillFailureDoesNotDropOrDuplicateBlocks()
+    {
+        // Head jumps 100 -> 103. Fetching block 102 throws on the FIRST attempt.
+        // Expected: first poll yields 100, second poll yields 101 then fails at 102
+        // (lastBlockNumber parks at 101, not rolled back), third poll retries 102
+        // successfully and continues to 103. Final sequence: 100, 101, 102, 103 — no gap,
+        // no duplicate (i.e. 101 must not appear twice).
+        var provider = Substitute.For<ITronProvider>();
+        var nowBlockCall = 0;
+        provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                nowBlockCall++;
+                return nowBlockCall == 1
+                    ? new BlockInfo(100, "b100", 0, 0, Array.Empty<byte>())
+                    : new BlockInfo(103, "b103", 0, 0, Array.Empty<byte>());
+            });
+        provider.GetBlockByNumAsync(101, Arg.Any<CancellationToken>())
+            .Returns(new BlockInfo(101, "b101", 0, 0, Array.Empty<byte>()));
+        var call102 = 0;
+        provider.GetBlockByNumAsync(102, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                call102++;
+                if (call102 == 1) throw new HttpRequestException("transient");
+                return new BlockInfo(102, "b102", 0, 0, Array.Empty<byte>());
+            });
+
+        var stream = new PollingBlockStream(provider, intervalMs: 50);
+        var cts = new CancellationTokenSource(1000);
+        var blocks = new List<TronBlock>();
+
+        await foreach (var block in stream.StreamBlocksAsync(cts.Token))
+        {
+            blocks.Add(block);
+            if (blocks.Count >= 4) break;
+        }
+
+        Assert.Equal(4, blocks.Count);
+        Assert.Equal(new long[] { 100, 101, 102, 103 },
+            blocks.Select(b => b.BlockNumber).ToArray());
+    }
+
+    [Fact]
+    public async Task StreamBlocksAsync_CapsBackfillAtMaxBlocksPerPoll()
+    {
+        // Head jumps 100 -> 105 (gap of 5). With maxBlocksPerPoll=2, each poll yields
+        // at most 2 blocks. First poll seeds and yields 100. Subsequent polls yield
+        // 101/102, then 103/104, then 105 — still in order, still no drops, but
+        // bounded per-poll so cancellation stays responsive and RPC load is paced.
+        var provider = Substitute.For<ITronProvider>();
+        var nowBlockCall = 0;
+        provider.GetNowBlockAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                nowBlockCall++;
+                return nowBlockCall == 1
+                    ? new BlockInfo(100, "b100", 0, 0, Array.Empty<byte>())
+                    : new BlockInfo(105, "b105", 0, 0, Array.Empty<byte>());
+            });
+        for (long n = 101; n <= 105; n++)
+        {
+            var blockNum = n;
+            provider.GetBlockByNumAsync(blockNum, Arg.Any<CancellationToken>())
+                .Returns(new BlockInfo(blockNum, $"b{blockNum}", 0, 0, Array.Empty<byte>()));
+        }
+
+        var stream = new PollingBlockStream(provider, intervalMs: 30, maxBlocksPerPoll: 2);
+        var cts = new CancellationTokenSource(1000);
+        var blocks = new List<TronBlock>();
+
+        await foreach (var block in stream.StreamBlocksAsync(cts.Token))
+        {
+            blocks.Add(block);
+            if (blocks.Count >= 6) break;
+        }
+
+        Assert.Equal(6, blocks.Count);
+        Assert.Equal(new long[] { 100, 101, 102, 103, 104, 105 },
+            blocks.Select(b => b.BlockNumber).ToArray());
+    }
+
+    [Fact]
+    public void Constructor_RejectsNonPositiveMaxBlocksPerPoll()
+    {
+        var provider = Substitute.For<ITronProvider>();
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new PollingBlockStream(provider, maxBlocksPerPoll: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new PollingBlockStream(provider, maxBlocksPerPoll: -1));
+    }
+
+    [Fact]
     public void ConvertTransactions_NullReturnsEmpty()
     {
         var result = PollingBlockStream.ConvertTransactions(null);

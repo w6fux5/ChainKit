@@ -312,10 +312,10 @@ public class NileBurnFromTests : IAsyncLifetime
     {
         // Use the existing TTTE contract which account1 owns and which supports burnFrom.
         // This avoids the slow deploy+confirm cycle that can fail on testnet.
-        using var contract = new Trc20Contract(_provider, NileTestConstants.TtteContractAddress, _account1);
+        using var contract = new Trc20Contract(_provider, NileTestConstants.TtteContractAddress);
 
         // Step 1: Self-approve (account1 approves account1 to spend tokens)
-        var approveResult = await contract.ApproveAsync(NileTestConstants.Account1Address, 50m);
+        var approveResult = await contract.ApproveAsync(_account1, NileTestConstants.Account1Address, 50m);
         if (!approveResult.Success && TestnetGuard.IsResourceExhausted(approveResult.Error?.Message))
         {
             _output.WriteLine($"[KNOWN LIMITATION] Testnet resources exhausted for approve: {approveResult.Error?.Message}");
@@ -332,7 +332,7 @@ public class NileBurnFromTests : IAsyncLifetime
         Assert.Equal(50m, allowanceResult.Data);
 
         // Step 3: BurnFrom (account1 burns tokens from account1's balance using allowance)
-        var burnResult = await contract.BurnFromAsync(NileTestConstants.Account1Address, 10m);
+        var burnResult = await contract.BurnFromAsync(_account1, NileTestConstants.Account1Address, 10m);
         if (!burnResult.Success && TestnetGuard.IsResourceExhausted(burnResult.Error?.Message))
         {
             _output.WriteLine($"[KNOWN LIMITATION] Testnet resources exhausted for burnFrom: {burnResult.Error?.Message}");

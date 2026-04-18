@@ -10,7 +10,7 @@ using NetMQ.Sockets;
 
 namespace ChainKit.Tron.Watching;
 
-public class ZmqBlockStream : ITronBlockStream
+public sealed class ZmqBlockStream : ITronBlockStream
 {
     private readonly string _endpoint;
     private readonly ILogger _logger;

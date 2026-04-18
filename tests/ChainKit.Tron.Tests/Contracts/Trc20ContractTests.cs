@@ -15,7 +15,7 @@ namespace ChainKit.Tron.Tests.Contracts;
 public class Trc20ContractTests
 {
     private readonly ITronProvider _provider = Substitute.For<ITronProvider>();
-    private readonly TronAccount _account;
+    private readonly TronAccount _signer;
     private readonly Trc20Contract _contract;
 
     private const string ContractAddr = "41a614f803b6fd780986a42c78ec9c7f77e6ded13c"; // hex
@@ -26,8 +26,8 @@ public class Trc20ContractTests
 
     public Trc20ContractTests()
     {
-        _account = TronAccount.FromPrivateKey(TestPrivateKey);
-        _contract = new Trc20Contract(_provider, ContractAddr, _account);
+        _signer = TronAccount.FromPrivateKey(TestPrivateKey);
+        _contract = new Trc20Contract(_provider, ContractAddr);
 
         // Set up decimals() to return 6 by default (used by many tests)
         SetupDecimalsReturn(TokenDecimals);
@@ -115,19 +115,13 @@ public class Trc20ContractTests
     [Fact]
     public void Constructor_NullProvider_Throws()
     {
-        Assert.Throws<ArgumentNullException>(() => new Trc20Contract(null!, ContractAddr, _account));
+        Assert.Throws<ArgumentNullException>(() => new Trc20Contract(null!, ContractAddr));
     }
 
     [Fact]
     public void Constructor_NullContractAddress_Throws()
     {
-        Assert.Throws<ArgumentNullException>(() => new Trc20Contract(_provider, null!, _account));
-    }
-
-    [Fact]
-    public void Constructor_NullOwnerAccount_Throws()
-    {
-        Assert.Throws<ArgumentNullException>(() => new Trc20Contract(_provider, ContractAddr, null!));
+        Assert.Throws<ArgumentNullException>(() => new Trc20Contract(_provider, null!));
     }
 
     [Fact]
@@ -242,7 +236,7 @@ public class Trc20ContractTests
                 Arg.Is("balanceOf(address)"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
             .Returns(encoded);
 
-        var result = await _contract.BalanceOfAsync(_account.HexAddress);
+        var result = await _contract.BalanceOfAsync(_signer.HexAddress);
 
         Assert.True(result.Success);
         Assert.Equal(1m, result.Data);
@@ -258,7 +252,7 @@ public class Trc20ContractTests
                 Arg.Is("balanceOf(address)"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
             .Returns(encoded);
 
-        var result = await _contract.BalanceOfAsync(_account.HexAddress);
+        var result = await _contract.BalanceOfAsync(_signer.HexAddress);
 
         Assert.True(result.Success);
         Assert.Equal(0m, result.Data);
@@ -272,7 +266,7 @@ public class Trc20ContractTests
                 Arg.Is("balanceOf(address)"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Network error"));
 
-        var result = await _contract.BalanceOfAsync(_account.HexAddress);
+        var result = await _contract.BalanceOfAsync(_signer.HexAddress);
 
         Assert.False(result.Success);
         Assert.Contains("Network error", result.Error!.Message);
@@ -292,7 +286,7 @@ public class Trc20ContractTests
                 Arg.Is("allowance(address,address)"), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
             .Returns(encoded);
 
-        var result = await _contract.AllowanceAsync(_account.HexAddress, ContractAddr);
+        var result = await _contract.AllowanceAsync(_signer.HexAddress, ContractAddr);
 
         Assert.True(result.Success);
         Assert.Equal(500m, result.Data);
@@ -305,7 +299,7 @@ public class Trc20ContractTests
     {
         SetupWriteSuccess("transfer_tx_123");
 
-        var result = await _contract.TransferAsync(_account.HexAddress, 100m);
+        var result = await _contract.TransferAsync(_signer, _signer.HexAddress, 100m);
 
         Assert.True(result.Success);
         Assert.Equal("transfer_tx_123", result.Data!.TxId);
@@ -317,7 +311,7 @@ public class Trc20ContractTests
     {
         SetupWriteFailure("CONTRACT_REVERT");
 
-        var result = await _contract.TransferAsync(_account.HexAddress, 100m);
+        var result = await _contract.TransferAsync(_signer, _signer.HexAddress, 100m);
 
         Assert.False(result.Success);
         Assert.Contains("CONTRACT_REVERT", result.Error!.Message);
@@ -332,10 +326,36 @@ public class Trc20ContractTests
                 Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Connection refused"));
 
-        var result = await _contract.TransferAsync(_account.HexAddress, 50m);
+        var result = await _contract.TransferAsync(_signer, _signer.HexAddress, 50m);
 
         Assert.False(result.Success);
         Assert.Contains("Connection refused", result.Error!.Message);
+    }
+
+    [Fact]
+    public async Task TransferAsync_NullSigner_ReturnsFail()
+    {
+        var result = await _contract.TransferAsync(null!, _signer.HexAddress, 100m);
+        Assert.False(result.Success);
+        Assert.Contains("Signer", result.Error!.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TransferAsync_DifferentSignersUseOwnKeys()
+    {
+        // Different sub-wallets on same contract should each use their own signer
+        var key2 = "0000000000000000000000000000000000000000000000000000000000000002".FromHex();
+        using var signer2 = TronAccount.FromPrivateKey(key2);
+
+        SetupWriteSuccess("tx_from_signer1");
+        var r1 = await _contract.TransferAsync(_signer, _signer.HexAddress, 10m);
+        Assert.True(r1.Success);
+        Assert.Equal(_signer.Address, r1.Data!.FromAddress);
+
+        SetupWriteSuccess("tx_from_signer2");
+        var r2 = await _contract.TransferAsync(signer2, _signer.HexAddress, 20m);
+        Assert.True(r2.Success);
+        Assert.Equal(signer2.Address, r2.Data!.FromAddress);
     }
 
     // === ApproveAsync ===
@@ -345,11 +365,19 @@ public class Trc20ContractTests
     {
         SetupWriteSuccess("approve_tx_456");
 
-        var result = await _contract.ApproveAsync(_account.HexAddress, 200m);
+        var result = await _contract.ApproveAsync(_signer, _signer.HexAddress, 200m);
 
         Assert.True(result.Success);
         Assert.Equal("approve_tx_456", result.Data!.TxId);
         Assert.Equal(200m, result.Data.Amount);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_NullSigner_ReturnsFail()
+    {
+        var result = await _contract.ApproveAsync(null!, _signer.HexAddress, 100m);
+        Assert.False(result.Success);
+        Assert.Contains("Signer", result.Error!.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // === MintAsync ===
@@ -359,11 +387,19 @@ public class Trc20ContractTests
     {
         SetupWriteSuccess("mint_tx_789");
 
-        var result = await _contract.MintAsync(_account.HexAddress, 1000m);
+        var result = await _contract.MintAsync(_signer, _signer.HexAddress, 1000m);
 
         Assert.True(result.Success);
         Assert.Equal("mint_tx_789", result.Data!.TxId);
         Assert.Equal(1000m, result.Data.Amount);
+    }
+
+    [Fact]
+    public async Task MintAsync_NullSigner_ReturnsFail()
+    {
+        var result = await _contract.MintAsync(null!, _signer.HexAddress, 100m);
+        Assert.False(result.Success);
+        Assert.Contains("Signer", result.Error!.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // === BurnAsync ===
@@ -373,11 +409,19 @@ public class Trc20ContractTests
     {
         SetupWriteSuccess("burn_tx_abc");
 
-        var result = await _contract.BurnAsync(50m);
+        var result = await _contract.BurnAsync(_signer, 50m);
 
         Assert.True(result.Success);
         Assert.Equal("burn_tx_abc", result.Data!.TxId);
         Assert.Equal(50m, result.Data.Amount);
+    }
+
+    [Fact]
+    public async Task BurnAsync_NullSigner_ReturnsFail()
+    {
+        var result = await _contract.BurnAsync(null!, 10m);
+        Assert.False(result.Success);
+        Assert.Contains("Signer", result.Error!.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // === BurnFromAsync ===
@@ -387,11 +431,19 @@ public class Trc20ContractTests
     {
         SetupWriteSuccess("burnfrom_tx_def");
 
-        var result = await _contract.BurnFromAsync(_account.HexAddress, 25m);
+        var result = await _contract.BurnFromAsync(_signer, _signer.HexAddress, 25m);
 
         Assert.True(result.Success);
         Assert.Equal("burnfrom_tx_def", result.Data!.TxId);
         Assert.Equal(25m, result.Data.Amount);
+    }
+
+    [Fact]
+    public async Task BurnFromAsync_NullSigner_ReturnsFail()
+    {
+        var result = await _contract.BurnFromAsync(null!, _signer.HexAddress, 10m);
+        Assert.False(result.Success);
+        Assert.Contains("Signer", result.Error!.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // === Helpers ===
@@ -468,7 +520,7 @@ public class Trc20ContractTests
     [Fact]
     public async Task TransferAsync_ZeroAmount_ReturnsFail()
     {
-        var result = await _contract.TransferAsync(_account.HexAddress, 0m);
+        var result = await _contract.TransferAsync(_signer, _signer.HexAddress, 0m);
         Assert.False(result.Success);
         Assert.Contains("InvalidAmount", result.Error!.Code);
     }
@@ -476,7 +528,7 @@ public class Trc20ContractTests
     [Fact]
     public async Task TransferAsync_NegativeAmount_ReturnsFail()
     {
-        var result = await _contract.TransferAsync(_account.HexAddress, -10m);
+        var result = await _contract.TransferAsync(_signer, _signer.HexAddress, -10m);
         Assert.False(result.Success);
         Assert.Contains("InvalidAmount", result.Error!.Code);
     }
@@ -484,7 +536,7 @@ public class Trc20ContractTests
     [Fact]
     public async Task ApproveAsync_ZeroAmount_ReturnsFail()
     {
-        var result = await _contract.ApproveAsync(_account.HexAddress, 0m);
+        var result = await _contract.ApproveAsync(_signer, _signer.HexAddress, 0m);
         Assert.False(result.Success);
         Assert.Contains("InvalidAmount", result.Error!.Code);
     }
@@ -492,7 +544,7 @@ public class Trc20ContractTests
     [Fact]
     public async Task MintAsync_ZeroAmount_ReturnsFail()
     {
-        var result = await _contract.MintAsync(_account.HexAddress, 0m);
+        var result = await _contract.MintAsync(_signer, _signer.HexAddress, 0m);
         Assert.False(result.Success);
         Assert.Contains("InvalidAmount", result.Error!.Code);
     }
@@ -500,7 +552,7 @@ public class Trc20ContractTests
     [Fact]
     public async Task BurnAsync_ZeroAmount_ReturnsFail()
     {
-        var result = await _contract.BurnAsync(0m);
+        var result = await _contract.BurnAsync(_signer, 0m);
         Assert.False(result.Success);
         Assert.Contains("InvalidAmount", result.Error!.Code);
     }
@@ -508,7 +560,7 @@ public class Trc20ContractTests
     [Fact]
     public async Task BurnFromAsync_ZeroAmount_ReturnsFail()
     {
-        var result = await _contract.BurnFromAsync(_account.HexAddress, 0m);
+        var result = await _contract.BurnFromAsync(_signer, _signer.HexAddress, 0m);
         Assert.False(result.Success);
         Assert.Contains("InvalidAmount", result.Error!.Code);
     }

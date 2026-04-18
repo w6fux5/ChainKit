@@ -12,6 +12,7 @@ namespace ChainKit.Evm.Providers;
 public sealed class EvmHttpProvider : IEvmProvider
 {
     private readonly HttpClient _httpClient;
+    private readonly bool _ownsHttpClient;
     private readonly string _rpcUrl;
     private readonly ILogger<EvmHttpProvider> _logger;
     private long _requestId;
@@ -23,6 +24,7 @@ public sealed class EvmHttpProvider : IEvmProvider
     {
         _rpcUrl = rpcUrl ?? throw new ArgumentNullException(nameof(rpcUrl));
         _httpClient = new HttpClient();
+        _ownsHttpClient = true;
         _logger = logger ?? NullLogger<EvmHttpProvider>.Instance;
     }
 
@@ -31,6 +33,18 @@ public sealed class EvmHttpProvider : IEvmProvider
     /// </summary>
     public EvmHttpProvider(EvmNetworkConfig network, ILogger<EvmHttpProvider>? logger = null)
         : this(network.RpcUrl, logger) { }
+
+    /// <summary>
+    /// Creates a new provider with an externally-managed HttpClient. Intended for testing.
+    /// The provider does not dispose the supplied <paramref name="httpClient"/>.
+    /// </summary>
+    public EvmHttpProvider(HttpClient httpClient, string rpcUrl, ILogger<EvmHttpProvider>? logger = null)
+    {
+        _rpcUrl = rpcUrl ?? throw new ArgumentNullException(nameof(rpcUrl));
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _ownsHttpClient = false;
+        _logger = logger ?? NullLogger<EvmHttpProvider>.Instance;
+    }
 
     /// <summary>
     /// Core JSON-RPC 2.0 request helper. All public methods delegate to this.
@@ -182,7 +196,23 @@ public sealed class EvmHttpProvider : IEvmProvider
     }
 
     /// <summary>
-    /// Disposes the internal HttpClient.
+    /// Gets the chain ID reported by the node via eth_chainId.
     /// </summary>
-    public void Dispose() => _httpClient.Dispose();
+    public async Task<long> GetChainIdAsync(CancellationToken ct = default)
+    {
+        var result = await RpcAsync("eth_chainId", null, ct);
+        var hex = result.GetString()
+            ?? throw new InvalidOperationException("eth_chainId returned null");
+        return ParseHexLong(hex);
+    }
+
+    /// <summary>
+    /// Disposes the internal HttpClient if it was created by this provider.
+    /// Externally-provided HttpClient instances are not disposed.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+            _httpClient.Dispose();
+    }
 }

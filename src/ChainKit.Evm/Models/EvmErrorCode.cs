@@ -16,5 +16,6 @@ public enum EvmErrorCode
     TransactionNotFound,
     ProviderConnectionFailed,
     ProviderTimeout,
-    ProviderRpcError
+    ProviderRpcError,
+    InvalidArgument
 }

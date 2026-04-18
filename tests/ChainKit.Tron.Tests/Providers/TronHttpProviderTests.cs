@@ -440,6 +440,20 @@ public class TronHttpProviderTests
     }
 
     [Fact]
+    public async Task GetTransactionInfoByIdAsync_UseSolidityFalse_HitsFullNodeEndpoint()
+    {
+        // useSolidity: false routes to Full Node for faster in-block detection
+        // (~3-6s vs ~60s for solidified confirmation)
+        var handler = MockJson("{}");
+        var provider = CreateProvider(handler);
+
+        await provider.GetTransactionInfoByIdAsync("abc123", useSolidity: false);
+
+        Assert.Contains("/wallet/gettransactioninfobyid", handler.LastRequestUri!.ToString());
+        Assert.DoesNotContain("/walletsolidity/", handler.LastRequestUri!.ToString());
+    }
+
+    [Fact]
     public async Task GetTransactionInfoByIdAsync_WithReceiptResult_ParsesReceiptResult()
     {
         var responseJson = """

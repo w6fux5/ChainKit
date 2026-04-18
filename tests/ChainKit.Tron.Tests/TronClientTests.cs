@@ -327,7 +327,7 @@ public class TronClientTests
         _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 0, 0, 0));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 1000, 200, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -350,7 +350,7 @@ public class TronClientTests
                 OwnerAddress: "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
 
         // energy_fee = 27_255_900 sun, net_fee = 348_000 sun
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS",
                 Fee: 27_603_900, EnergyUsage: 64_895, NetUsage: 345,
                 EnergyFee: 27_255_900, NetFee: 348_000));
@@ -374,7 +374,7 @@ public class TronClientTests
         _provider.GetTransactionByIdAsync(txId, Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Solidity node unavailable"));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -393,7 +393,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0));
 
         // 模擬 Solidity Node 回傳空物件：TxId 為空，代表交易尚未 solidified
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -411,7 +411,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TriggerSmartContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 100000, 0,
                 ReceiptResult: "REVERT"));
 
@@ -430,7 +430,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TriggerSmartContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 100000, 0,
                 ReceiptResult: "OUT_OF_ENERGY"));
 
@@ -449,7 +449,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TriggerSmartContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 5000000, 50000, 0,
                 ReceiptResult: "SUCCESS"));
 
@@ -469,7 +469,7 @@ public class TronClientTests
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 0,
                 ContractType: "TransferContract"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "", 0, 0, 267));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -505,7 +505,7 @@ public class TronClientTests
                 ToAddress: toHex,
                 AmountSun: 5_000_000)); // 5 TRX
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 100, 1700000000000, "SUCCESS", 1000, 0, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -544,7 +544,7 @@ public class TronClientTests
                 ContractAddress: contractHex,
                 ContractData: data));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
 
         // Mock symbol() and decimals() contract calls for the unknown contract
@@ -598,7 +598,7 @@ public class TronClientTests
                 ContractAddress: contractHex,
                 ContractData: data));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 200, 1700000000000, "SUCCESS", 2000, 13000, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -635,7 +635,7 @@ public class TronClientTests
                 ContractAddress: contractHex,
                 ContractData: data));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 300, 1700000000000, "SUCCESS", 500, 5000, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -657,7 +657,7 @@ public class TronClientTests
                 OwnerAddress: ownerHex,
                 AmountSun: 100_000_000)); // 100 TRX
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 400, 1700000000000, "SUCCESS", 0, 0, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -679,7 +679,7 @@ public class TronClientTests
                 ContractType: "CreateSmartContract",
                 OwnerAddress: ownerHex));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 500, 1700000000000, "SUCCESS", 10000, 50000, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -703,7 +703,7 @@ public class TronClientTests
                 ToAddress: receiverHex,
                 AmountSun: 50_000_000)); // 50 TRX
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 600, 1700000000000, "SUCCESS", 0, 0, 300));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -725,7 +725,7 @@ public class TronClientTests
                 ContractType: "ProposalCreateContract",
                 OwnerAddress: "41a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"));
 
-        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<CancellationToken>())
+        _provider.GetTransactionInfoByIdAsync(txId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto(txId, 700, 1700000000000, "SUCCESS", 0, 0, 0));
 
         var result = await _client.GetTransactionDetailAsync(txId);
@@ -1045,8 +1045,7 @@ public class TronClientTests
     [Fact]
     public void GetTrc20Contract_ReturnsContractInstance()
     {
-        var account = TronAccount.FromPrivateKey(TestPrivateKey);
-        var contract = _client.GetTrc20Contract("41a614f803b6fd780986a42c78ec9c7f77e6ded13c", account);
+        var contract = _client.GetTrc20Contract("41a614f803b6fd780986a42c78ec9c7f77e6ded13c");
 
         Assert.NotNull(contract);
         Assert.IsType<Trc20Contract>(contract);
@@ -1197,14 +1196,16 @@ public class TronClientTests
     // === IDisposable ===
 
     [Fact]
-    public void Dispose_DisposesDisposableProvider()
+    public void Dispose_DoesNotDisposeExternallyOwnedProvider()
     {
+        // Provider is externally owned; TronClient must not dispose it
+        // (matches EvmClient behavior; allows provider sharing across clients)
         var disposableProvider = Substitute.For<ITronProvider, IDisposable>();
         var client = new TronClient(disposableProvider);
 
         client.Dispose();
 
-        ((IDisposable)disposableProvider).Received(1).Dispose();
+        ((IDisposable)disposableProvider).DidNotReceive().Dispose();
     }
 
     [Fact]
@@ -1340,5 +1341,199 @@ public class TronClientTests
         Buffer.BlockCopy(lenBytes, 0, result, 32, 32);
         Buffer.BlockCopy(strBytes, 0, result, 64, strBytes.Length);
         return result;
+    }
+
+    // === WaitForOnChainAsync ===
+
+    private static TransactionInfoDto EmptyTxInfo(string txId) =>
+        new(TxId: txId, BlockNumber: 0, BlockTimestamp: 0, ContractResult: "",
+            Fee: 0, EnergyUsage: 0, NetUsage: 0);
+
+    private static TransactionInfoDto OnChainTxInfo(string txId, long blockNumber = 12345) =>
+        new(TxId: txId, BlockNumber: blockNumber, BlockTimestamp: 1700000000000,
+            ContractResult: "SUCCESS", Fee: 1000, EnergyUsage: 0, NetUsage: 268);
+
+    [Fact]
+    public async Task WaitForOnChainAsync_TxAppearsAfterTwoPolls_ReturnsOk()
+    {
+        var calls = 0;
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                return Task.FromResult(calls < 3 ? EmptyTxInfo("txA") : OnChainTxInfo("txA"));
+            });
+
+        var result = await _client.WaitForOnChainAsync("txA",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data);
+        Assert.Equal(12345L, result.Data!.BlockNumber);
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_NeverOnChain_TimesOut()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(EmptyTxInfo("txT"));
+
+        var result = await _client.WaitForOnChainAsync("txT",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderTimeout.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_ConsecutiveFailures_ReturnsProviderConnectionFailed()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("network down"));
+
+        var result = await _client.WaitForOnChainAsync("txF",
+            timeout: TimeSpan.FromSeconds(10),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 3);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderConnectionFailed.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_FailureThenSuccess_ResetsCounter()
+    {
+        var calls = 0;
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                calls++;
+                if (calls <= 2) throw new HttpRequestException("flaky");
+                if (calls == 3) return Task.FromResult(EmptyTxInfo("txR"));
+                return Task.FromResult(OnChainTxInfo("txR"));
+            });
+
+        var result = await _client.WaitForOnChainAsync("txR",
+            timeout: TimeSpan.FromSeconds(5),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 3);
+
+        // 2 throws then success — counter resets, never hits the threshold.
+        Assert.True(result.Success);
+        Assert.Equal(4, calls);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_MaxFailuresZero_RetriesUntilTimeout()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("always down"));
+
+        var result = await _client.WaitForOnChainAsync("txU",
+            timeout: TimeSpan.FromMilliseconds(50),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            maxConsecutiveFailures: 0);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderTimeout.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_Cancelled_ThrowsOperationCanceled()
+    {
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(EmptyTxInfo("txC"));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _client.WaitForOnChainAsync("txC",
+                timeout: TimeSpan.FromSeconds(5),
+                pollInterval: TimeSpan.FromMilliseconds(5),
+                ct: cts.Token));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task WaitForOnChainAsync_BadTxId_ReturnsInvalidArgument(string? txId)
+    {
+        var result = await _client.WaitForOnChainAsync(txId!);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+        await _provider.DidNotReceive().GetTransactionInfoByIdAsync(
+            Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_ZeroPollInterval_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("txZ",
+            pollInterval: TimeSpan.Zero);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_NegativeTimeout_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("txN",
+            timeout: TimeSpan.FromSeconds(-1));
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_NegativeMaxFailures_ReturnsInvalidArgument()
+    {
+        var result = await _client.WaitForOnChainAsync("txM",
+            maxConsecutiveFailures: -1);
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.InvalidArgument.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task WaitForOnChainAsync_TimeoutZero_PollsOnceThenTimesOut()
+    {
+        var calls = 0;
+        _provider.GetTransactionInfoByIdAsync(
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ => { calls++; return Task.FromResult(EmptyTxInfo("txZ0")); });
+
+        var result = await _client.WaitForOnChainAsync("txZ0",
+            timeout: TimeSpan.Zero,
+            pollInterval: TimeSpan.FromMilliseconds(10));
+
+        Assert.False(result.Success);
+        Assert.Equal(TronErrorCode.ProviderTimeout.ToString(), result.Error!.Code);
+        Assert.Equal(1, calls);
     }
 }

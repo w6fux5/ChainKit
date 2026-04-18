@@ -65,8 +65,15 @@ public sealed class EvmAccount : IAccount, IDisposable
     {
         var m = new Mnemonic(mnemonic);
         var seed = m.DeriveSeed();
-        var masterKey = ExtKey.CreateFromSeed(seed);
-        var derived = masterKey.Derive(new KeyPath($"m/44'/60'/0'/0/{index}"));
-        return FromPrivateKey(derived.PrivateKey.ToBytes());
+        try
+        {
+            var masterKey = ExtKey.CreateFromSeed(seed);
+            var derived = masterKey.Derive(new KeyPath($"m/44'/60'/0'/0/{index}"));
+            return FromPrivateKey(derived.PrivateKey.ToBytes());
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(seed);
+        }
     }
 }

@@ -72,4 +72,9 @@ public interface IEvmProvider : IDisposable
     /// Gets event logs matching the given filter criteria.
     /// </summary>
     Task<JsonElement[]> GetLogsAsync(long fromBlock, long toBlock, string? address = null, string[]? topics = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the chain ID reported by the node via eth_chainId.
+    /// </summary>
+    Task<long> GetChainIdAsync(CancellationToken ct = default);
 }

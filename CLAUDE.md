@@ -75,7 +75,7 @@
 - 金額計算用 `TokenConverter.DecimalPow10`（decimal 迴圈乘法），禁用 `Math.Pow`（double 精度損失）
 - `JsonDocument.Parse` 必須用 `using` dispose（歸還 ArrayPool 記憶體）
 - IDisposable：TronClient、TronHttpProvider、TronGrpcProvider、Trc20Contract、TronAccount（清零私鑰）
-- IAsyncDisposable：TronTransactionWatcher
+- IAsyncDisposable：TronTransactionWatcher、EvmTransactionWatcher、TronNodeHealthWatcher、EvmNodeHealthWatcher
 - Thread safe：TokenInfoCache（ConcurrentDictionary）、Trc20Contract（SemaphoreSlim）、Watcher（lock）
 - Watcher 六事件：OnTrx/Trc20 Received/Sent（Unconfirmed）+ OnTransactionConfirmed/Failed（Solidity Node 確認）
 - Watcher 事件的地址欄位統一回傳 Base58 格式（T 開頭），provider 層保持 hex（見 ADR 007）
@@ -91,8 +91,8 @@
 - ERC20 Transfer 偵測用 receipt logs（topic `0xddf252ad...`），不用 input data
 - ERC20 所有操作統一走 `Erc20Contract`，`EvmClient` 不包 ERC20 transfer
 - IDisposable：EvmClient、EvmHttpProvider、Erc20Contract、EvmAccount（清零私鑰）
-- IAsyncDisposable：EvmTransactionWatcher
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
+- 鏈式交易要等上鏈：broadcast 後若立刻從收款方再轉出，呼叫端應先 `WaitForOnChainAsync(txId)`（Tron）或 `WaitForOnChainAsync(txHash)` / `WaitForReceiptAsync(txHash)`（EVM），不要假設 broadcast 成功 = 餘額已更新
 
 ## Tron 開發注意事項
 
@@ -132,13 +132,15 @@
 - `ChainKit.Evm` 單一專案支援所有 EVM 鏈，用 `EvmNetworkConfig` 的 ChainId 區分
 - EVM 交易確認：receipt status + block confirmations（預設 12）
 - CI/CD：GitHub Actions 在 push `v*` tag 時自動 build → test → pack → push NuGet（見 ADR 015）
+- 節點健康檢查：`TronNodeHealthWatcher` / `EvmNodeHealthWatcher` 以 event-based poll 模式回報 raw metrics（Reachable/Latency/BlockNumber/BlockAge，EVM 另含 ChainIdMatch），由呼叫端自行定義健康 threshold
+- Wait-for-on-chain helpers：`TronClient.WaitForOnChainAsync` / `EvmClient.WaitForOnChainAsync` / `EvmClient.WaitForReceiptAsync` — polling-based，讓呼叫端在 broadcast 後等 tx 進塊（Tron Full Node `/wallet/gettransactioninfobyid`、EVM `eth_getTransactionReceipt`）再鏈式做下一筆；timeout/pollInterval/maxConsecutiveFailures 全可調；revert 仍回 Ok，由呼叫端判 status。Tron Provider 的 `GetTransactionInfoByIdAsync` 新增 `useSolidity=true` 預設參數（保留 Watcher 用 Solidity Node 的既有行為）
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`、`docs/decisions/014-evm-sdk-architecture.md`
 
 ## 文件
 
 - `docs/tron-sdk-usage-guide.md` — Tron 使用指南（安裝、範例、高低階 API、工具類、錯誤處理）
 - `docs/evm-sdk-usage-guide.md` — EVM 使用指南（安裝、範例、EvmClient、Erc20Contract、Watcher、錯誤處理）
-- `docs/decisions/` — 架構決策紀錄（ADR 001-015），檔名即標題
+- `docs/decisions/` — 架構決策紀錄（ADR 001-018），檔名即標題
 - `docs/tron-sdk-development-summary.md` — 開發總結
 - `docs/tron-transaction-lifecycle.md` — 交易生命週期（階段、狀態對應、Watcher 功能）
 - `docs/superpowers/specs/2026-04-03-tron-sdk-design.md` — 設計規格（初版，部分內容已更新）
@@ -147,4 +149,8 @@
 - `docs/superpowers/plans/` — 實作計畫（4 份）
 - `docs/superpowers/specs/2026-04-13-evm-sdk-design.md` — EVM SDK 設計規格
 - `docs/superpowers/plans/2026-04-13-evm-sdk-implementation.md` — EVM SDK 實作計畫
+- `docs/superpowers/specs/2026-04-16-node-health-watcher-design.md` — 節點健康檢查設計規格
+- `docs/superpowers/plans/2026-04-16-node-health-watcher-implementation.md` — 節點健康檢查實作計畫
+- `docs/superpowers/specs/2026-04-17-wait-for-onchain-design.md` — Wait-for-on-chain helpers 設計規格
+- `docs/superpowers/plans/2026-04-17-wait-for-onchain-implementation.md` — Wait-for-on-chain helpers 實作計畫
 - `sandbox/README.md` — Sandbox 使用說明（啟動、設定、API 對照表、測試流程）

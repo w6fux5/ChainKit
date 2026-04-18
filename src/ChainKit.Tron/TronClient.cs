@@ -20,6 +20,8 @@ public class TronClient : IDisposable
 {
     private const long SunPerTrx = 1_000_000;
     private const long DefaultFeeLimit = 100_000_000; // 100 TRX
+    private static readonly TimeSpan DefaultWaitOnChainTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultWaitOnChainPollInterval = TimeSpan.FromSeconds(1);
     private readonly ILogger _logger;
 
     public ITronProvider Provider { get; }
@@ -103,7 +105,7 @@ public class TronClient : IDisposable
             TransactionInfoDto? solidityInfo = null;
             try
             {
-                solidityInfo = await Provider.GetTransactionInfoByIdAsync(txId, ct);
+                solidityInfo = await Provider.GetTransactionInfoByIdAsync(txId, ct: ct);
             }
             catch (Exception ex)
             {
@@ -696,19 +698,19 @@ public class TronClient : IDisposable
     // === Contract Helpers ===
 
     /// <summary>
-    /// Creates a <see cref="Trc20Contract"/> wrapper for interacting with an existing TRC20 token.
+    /// Creates a <see cref="Trc20Contract"/> handle for interacting with an existing TRC20 token.
+    /// The returned handle carries no identity; signer is supplied per write-call.
     /// </summary>
-    public Trc20Contract GetTrc20Contract(string contractAddress, TronAccount ownerAccount)
-        => new Trc20Contract(Provider, contractAddress, ownerAccount);
+    public Trc20Contract GetTrc20Contract(string contractAddress)
+        => new Trc20Contract(Provider, contractAddress);
 
     // === IDisposable ===
 
-    public void Dispose()
-    {
-        if (Provider is IDisposable d)
-            d.Dispose();
-        GC.SuppressFinalize(this);
-    }
+    /// <summary>
+    /// Disposes the client. The provider is externally owned and is NOT disposed
+    /// (matches EvmClient behavior; allows provider sharing across multiple clients).
+    /// </summary>
+    public void Dispose() { /* Provider is externally owned */ }
 
     // === Helpers ===
 
@@ -861,4 +863,77 @@ public class TronClient : IDisposable
             => FailureReason.OutOfBandwidth,
         _ => FailureReason.Other
     };
+
+    // === Wait Helpers ===
+
+    /// <summary>
+    /// Polls the Full Node until the transaction is included in a block (not solidified).
+    /// Use after broadcast when a follow-up tx depends on this tx's effects (e.g., spending received funds).
+    /// </summary>
+    /// <param name="txId">The transaction ID returned by the broadcast call.</param>
+    /// <param name="timeout">Total time to wait. Defaults to 15 seconds.</param>
+    /// <param name="pollInterval">Interval between polls. Defaults to 1 second.</param>
+    /// <param name="maxConsecutiveFailures">
+    /// Number of consecutive provider exceptions before giving up with ProviderConnectionFailed.
+    /// Set to 0 to retry indefinitely until timeout. Defaults to 5.
+    /// </param>
+    /// <param name="ct">Cancellation token. Cancellation throws OperationCanceledException (not wrapped in Result).</param>
+    public async Task<TronResult<TransactionInfoDto>> WaitForOnChainAsync(
+        string txId,
+        TimeSpan? timeout = null,
+        TimeSpan? pollInterval = null,
+        int maxConsecutiveFailures = 5,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(txId))
+            return TronResult<TransactionInfoDto>.Fail(TronErrorCode.InvalidArgument, "txId must not be null or empty");
+        if (maxConsecutiveFailures < 0)
+            return TronResult<TransactionInfoDto>.Fail(TronErrorCode.InvalidArgument, "maxConsecutiveFailures must be >= 0");
+
+        var effectiveTimeout = timeout ?? DefaultWaitOnChainTimeout;
+        if (effectiveTimeout < TimeSpan.Zero)
+            return TronResult<TransactionInfoDto>.Fail(TronErrorCode.InvalidArgument, "timeout must be >= zero");
+
+        var effectivePollInterval = pollInterval ?? DefaultWaitOnChainPollInterval;
+        if (effectivePollInterval <= TimeSpan.Zero)
+            return TronResult<TransactionInfoDto>.Fail(TronErrorCode.InvalidArgument, "pollInterval must be > zero");
+
+        var deadline = DateTime.UtcNow + effectiveTimeout;
+        var failures = 0;
+        string? lastFailureMessage = null;
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var info = await Provider.GetTransactionInfoByIdAsync(txId, useSolidity: false, ct);
+                failures = 0;
+                if (info.BlockNumber > 0)
+                    return TronResult<TransactionInfoDto>.Ok(info);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                failures++;
+                lastFailureMessage = ex.Message;
+                _logger.LogWarning(ex, "WaitForOnChainAsync: provider call failed (attempt {Failures})", failures);
+                if (maxConsecutiveFailures > 0 && failures >= maxConsecutiveFailures)
+                    return TronResult<TransactionInfoDto>.Fail(TronErrorCode.ProviderConnectionFailed, ex.Message);
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                var msg = lastFailureMessage is null
+                    ? $"Transaction {txId} not on-chain within {effectiveTimeout}"
+                    : $"Transaction {txId} not on-chain within {effectiveTimeout} (last error: {lastFailureMessage})";
+                return TronResult<TransactionInfoDto>.Fail(TronErrorCode.ProviderTimeout, msg);
+            }
+
+            await Task.Delay(effectivePollInterval, ct);
+        }
+    }
 }
