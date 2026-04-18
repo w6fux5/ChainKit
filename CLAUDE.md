@@ -133,6 +133,7 @@
 - EVM 交易確認：receipt status + block confirmations（預設 12）
 - CI/CD：GitHub Actions 在 push `v*` tag 時自動 build → test → pack → push NuGet（見 ADR 015）
 - 節點健康檢查：`TronNodeHealthWatcher` / `EvmNodeHealthWatcher` 以 event-based poll 模式回報 raw metrics（Reachable/Latency/BlockNumber/BlockAge，EVM 另含 ChainIdMatch），由呼叫端自行定義健康 threshold
+- Wait-for-on-chain helpers：`TronClient.WaitForOnChainAsync` / `EvmClient.WaitForOnChainAsync` / `EvmClient.WaitForReceiptAsync` — polling-based，讓呼叫端在 broadcast 後等 tx 進塊（Tron Full Node `/wallet/gettransactioninfobyid`、EVM `eth_getTransactionReceipt`）再鏈式做下一筆；timeout/pollInterval/maxConsecutiveFailures 全可調；revert 仍回 Ok，由呼叫端判 status。Tron Provider 的 `GetTransactionInfoByIdAsync` 新增 `useSolidity=true` 預設參數（保留 Watcher 用 Solidity Node 的既有行為）
 - 詳見 `docs/decisions/001-tron-sdk-architecture.md`、`docs/decisions/014-evm-sdk-architecture.md`
 
 ## 文件
@@ -150,4 +151,6 @@
 - `docs/superpowers/plans/2026-04-13-evm-sdk-implementation.md` — EVM SDK 實作計畫
 - `docs/superpowers/specs/2026-04-16-node-health-watcher-design.md` — 節點健康檢查設計規格
 - `docs/superpowers/plans/2026-04-16-node-health-watcher-implementation.md` — 節點健康檢查實作計畫
+- `docs/superpowers/specs/2026-04-17-wait-for-onchain-design.md` — Wait-for-on-chain helpers 設計規格
+- `docs/superpowers/plans/2026-04-17-wait-for-onchain-implementation.md` — Wait-for-on-chain helpers 實作計畫
 - `sandbox/README.md` — Sandbox 使用說明（啟動、設定、API 對照表、測試流程）
