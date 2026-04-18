@@ -249,7 +249,7 @@ public class TronTransactionWatcher : IAsyncDisposable
 
                 try
                 {
-                    var info = await _provider.GetTransactionInfoByIdAsync(pending.TxId, ct);
+                    var info = await _provider.GetTransactionInfoByIdAsync(pending.TxId, ct: ct);
                     if (string.IsNullOrEmpty(info.TxId) || info.BlockNumber == 0)
                         continue; // Not yet on Solidity Node
 

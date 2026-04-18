@@ -92,6 +92,7 @@
 - ERC20 所有操作統一走 `Erc20Contract`，`EvmClient` 不包 ERC20 transfer
 - IDisposable：EvmClient、EvmHttpProvider、Erc20Contract、EvmAccount（清零私鑰）
 - 新增鏈遵循相同架構：`ChainKit.{Chain}` + 共用 `ChainKit.Core`
+- 鏈式交易要等上鏈：broadcast 後若立刻從收款方再轉出，呼叫端應先 `WaitForOnChainAsync(txId)`（Tron）或 `WaitForOnChainAsync(txHash)` / `WaitForReceiptAsync(txHash)`（EVM），不要假設 broadcast 成功 = 餘額已更新
 
 ## Tron 開發注意事項
 

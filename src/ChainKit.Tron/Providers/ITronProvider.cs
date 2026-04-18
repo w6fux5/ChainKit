@@ -11,7 +11,17 @@ public interface ITronProvider
     Task<Transaction> CreateTransactionAsync(Transaction transaction, CancellationToken ct = default);
     Task<BroadcastResult> BroadcastTransactionAsync(Transaction signedTx, CancellationToken ct = default);
     Task<TransactionInfoDto> GetTransactionByIdAsync(string txId, CancellationToken ct = default);
-    Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets transaction info by id.
+    /// </summary>
+    /// <param name="txId">Transaction ID.</param>
+    /// <param name="useSolidity">
+    /// When true (default), reads from /walletsolidity/gettransactioninfobyid (only solidified txs visible).
+    /// When false, reads from /wallet/gettransactioninfobyid (in-block txs visible, ~3-6s after broadcast).
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<TransactionInfoDto> GetTransactionInfoByIdAsync(string txId, bool useSolidity = true, CancellationToken ct = default);
     Task<Transaction> TriggerSmartContractAsync(
         string ownerAddress, string contractAddress,
         string functionSelector, byte[] parameter,

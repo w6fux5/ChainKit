@@ -486,7 +486,7 @@ public class TronTransactionWatcherTests
 
         // Solidity Node confirms immediately
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0, ReceiptResult: "SUCCESS"));
 
         await using var watcher = new TronTransactionWatcher(stream, provider,
@@ -513,7 +513,7 @@ public class TronTransactionWatcherTests
 
         int callCount = 0;
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 if (Interlocked.Increment(ref callCount) <= 2)
@@ -545,7 +545,7 @@ public class TronTransactionWatcherTests
         var stream = new MockBlockStream(block);
 
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0, ReceiptResult: "SUCCESS"));
 
         await using var watcher = new TronTransactionWatcher(stream, provider,
@@ -573,7 +573,7 @@ public class TronTransactionWatcherTests
         var stream = new MockBlockStream(block);
 
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("revert_tx", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("revert_tx", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("revert_tx", 1, ts, "", 0, 0, 0,
                 ReceiptResult: "REVERT"));
 
@@ -605,7 +605,7 @@ public class TronTransactionWatcherTests
         var stream = new MockBlockStream(block);
 
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("oom_tx", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("oom_tx", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("oom_tx", 1, ts, "", 0, 0, 0,
                 ReceiptResult: "OUT_OF_ENERGY"));
 
@@ -631,7 +631,7 @@ public class TronTransactionWatcherTests
         var stream = new MockBlockStream(block);
 
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("tx1", 1, ts, "", 0, 0, 0, ReceiptResult: "DEFAULT"));
 
         await using var watcher = new TronTransactionWatcher(stream, provider,
@@ -659,7 +659,7 @@ public class TronTransactionWatcherTests
         var block = MakeBlock(1, tx);
         var stream = new MockBlockStream(block);
 
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
 
         await using var watcher = new TronTransactionWatcher(stream, provider,
@@ -688,7 +688,7 @@ public class TronTransactionWatcherTests
         var block = MakeBlock(1, tx);
         var stream = new MockBlockStream(block);
 
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new TransactionInfoDto("", 0, 0, "", 0, 0, 0));
 
         var watcher = new TronTransactionWatcher(stream, provider,
@@ -722,7 +722,7 @@ public class TronTransactionWatcherTests
 
         int callCount = 0;
         var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<CancellationToken>())
+        provider.GetTransactionInfoByIdAsync("tx1", Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 if (Interlocked.Increment(ref callCount) <= 2)

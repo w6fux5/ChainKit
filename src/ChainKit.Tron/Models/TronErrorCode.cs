@@ -13,5 +13,6 @@ public enum TronErrorCode
     TransactionExpired,
     DuplicateTransaction,
     ProviderConnectionFailed,
-    ProviderTimeout
+    ProviderTimeout,
+    InvalidArgument
 }
